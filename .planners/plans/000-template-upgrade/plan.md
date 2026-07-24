@@ -59,3 +59,21 @@ prior to this plan.
 - Renovate variant — repo uses the Dependabot default.
 
 ## Log
+
+- 2026-07-24: Applied the full sync matrix. Migrated `setup.py` to
+  `pyproject.toml` (hatchling, version `0.1.0a0`, metadata and deps carried
+  over) and removed `setup.py`. Copied pre-commit config, `.python-version`
+  (3.14), CI workflows, dependabot config, and the `.claude/` payload
+  (on-disk only — `.claude/` is gitignored).
+- 2026-07-24: Verification green: `uv sync --all-groups`, ruff check + format,
+  pyrefly (strict, 0 errors), `pre-commit run --all-files`, pytest (1 smoke
+  test). Source fixes needed: `__all__` re-exports in `__init__.py`, wrapped
+  one over-long docstring line, `list` → `list[str]`, and
+  `output_directory: str = None` → `str | None = None`.
+- 2026-07-24: Deviation from the "never touch README" row: ruff 0.16 formats
+  Python code blocks inside markdown, so `ruff format --check .` (CI and
+  pre-commit) requires a one-line quote-style normalization in the README's
+  example block. Accepted it rather than excluding README from the formatter,
+  since the template standard runs ruff with defaults.
+- 2026-07-24: Repo security toggles set: Dependabot alerts enabled, automated
+  security fixes confirmed off.
