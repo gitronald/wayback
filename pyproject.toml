@@ -1,0 +1,72 @@
+[project]
+name = "wayback"
+version = "0.1.0a0"
+description = "A wrapper for collecting data from the Wayback Machine"
+authors = [
+    {name = "Ronald E. Robertson", email = "rer@acm.org"}
+]
+requires-python = ">=3.11"
+dependencies = [
+    "waybackpy",
+    "requests",
+    "pandas",
+    "tqdm",
+]
+readme = "README.md"
+
+[project.urls]
+repository = "https://github.com/gitronald/wayback"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.sdist]
+# Ship only what a PyPI consumer needs. Root-anchored (leading "/") so bare
+# filenames don't glob at every depth — this keeps internal plan files
+# (.planners/), the .claude/ holder, tests, and tooling out of the
+# published sdist.
+only-include = [
+    "/wayback",
+    "/README.md",
+    "/LICENSE",
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit",
+    "pyrefly>=1.0.0",
+    "pytest>=9.0.2",
+    "pytest-cov",
+    "ruff>=0.15",
+]
+
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "F",    # pyflakes
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "I",    # isort (import sorting)
+    "UP",   # pyupgrade (modern Python idioms)
+]
+
+[tool.pyrefly]
+preset = "strict"
+python-version = "3.11"
+project-includes = ["."]
+project-excludes = ["**/__pycache__", "**/.venv"]
+
+# tests/ stays type-checked (imports, undefined names, type mismatches),
+# but the implicit-any check is relaxed there so unannotated pytest fixture
+# params (e.g. `def test_x(tmp_path):`) don't force annotations.
+[[tool.pyrefly.sub-config]]
+matches = "tests/**"
+
+[tool.pyrefly.sub-config.errors]
+implicit-any = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
