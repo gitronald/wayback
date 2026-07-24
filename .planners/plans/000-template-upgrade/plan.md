@@ -5,7 +5,7 @@ status: active
 branch: feature/template-upgrade
 created: 2026-07-24T08:00:07-07:00
 concluded:
-pr:
+pr: https://github.com/gitronald/wayback/pull/1
 ---
 
 # Upgrade repo to the proj-template standard
