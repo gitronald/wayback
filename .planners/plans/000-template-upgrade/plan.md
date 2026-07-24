@@ -1,10 +1,10 @@
 ---
 id: 0
 slug: template-upgrade
-status: active
+status: done
 branch: feature/template-upgrade
 created: 2026-07-24T08:00:07-07:00
-concluded:
+concluded: 2026-07-24T09:03:43-07:00
 pr: https://github.com/gitronald/wayback/pull/1
 ---
 
@@ -77,3 +77,30 @@ prior to this plan.
   since the template standard runs ruff with defaults.
 - 2026-07-24: Repo security toggles set: Dependabot alerts enabled, automated
   security fixes confirmed off.
+- 2026-07-24: Close-out review gate on PR #1. Review follow-up: one actionable
+  finding — `.pre-commit-config.yaml` pinned ruff-pre-commit v0.15.14 while
+  `uv.lock` resolves ruff 0.16.0, a skew that could let a commit pass the hook
+  but fail CI's `ruff format --check` (the same 0.15 -> 0.16 markdown-formatting
+  change already logged above). Bumped the hook rev to v0.16.0; full gate rerun
+  green including `pre-commit run --all-files` with the new rev. Conscious
+  no-ops (pre-existing source behavior, untouched per matrix): import-time
+  `end_timestamp` default, `assert`-based required-arg check, broad
+  `except Exception` in the URL loop, no top-level `permissions:` in
+  publish.yml. Review posted to the PR.
+
+## Retrospective
+
+- The sync matrix held up: every template file mapped cleanly onto the repo,
+  and the only judgment calls were the ones the plan pre-decided (version
+  `0.1.0a0`, no `[project.scripts]`, smoke test to give CI something real).
+- Tool-version skew was the recurring theme: ruff 0.16's markdown formatting
+  forced the one README deviation, and the same 0.15/0.16 split resurfaced at
+  close as a pre-commit rev behind the lockfile. When a template pins a hook
+  rev, check it against the resolved lock during the upgrade, not just at
+  review.
+- Annotating legacy signatures (`str | None`) was safe only because a
+  pre-existing runtime guard already narrowed the value — worth confirming the
+  guard exists before trusting a type-only fix to strict pyrefly.
+- A no-network smoke test was enough to make the whole CI pipeline meaningful
+  on day one; behavioral tests can come later without blocking the template
+  work.
