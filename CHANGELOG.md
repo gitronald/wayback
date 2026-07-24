@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `save_log` argument (default `True`) on `get_url_snapshots` and
+  `get_url_list_snapshots`, appending a JSON record of each run — parameters,
+  timing, and outcome — to `data/wayback-runs.jsonl`
+
 ## [0.1.0] - 2026-07-24
 
 ### Added

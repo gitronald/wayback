@@ -64,6 +64,9 @@ restarted without re-collecting anything. Requests are spaced `sleep_time` secon
 apart (default 5) to be polite to the API, and an error on one URL is printed and
 skipped rather than stopping the batch.
 
+Both functions also append a JSON record of each run — its parameters, timing, and
+outcome — to `data/wayback-runs.jsonl`; pass `save_log=False` to disable this.
+
 
 ## Dependencies
 
