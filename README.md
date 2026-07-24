@@ -31,16 +31,41 @@ print(data[show_cols].head(5).to_markdown())
 processing lazerlab.net
 extracting items
 reshaping items
-snapshots found: 207
+snapshots found: 220
 ```
 
-| url          |   statuscode | archive_url                                                            |      timestamp |
-|:-------------|-------------:|:-----------------------------------------------------------------------|---------------:|
-| lazerlab.net |          200 | https://web.archive.org/web/20180129175333/http://lazerlab.net:80/     | 20180129175333 |
-| lazerlab.net |          200 | https://web.archive.org/web/20180203075259/http://www.lazerlab.net:80/ | 20180203075259 |
-| lazerlab.net |          200 | https://web.archive.org/web/20180301214059/http://lazerlab.net:80/     | 20180301214059 |
-| lazerlab.net |          200 | https://web.archive.org/web/20180306094604/http://www.lazerlab.net:80/ | 20180306094604 |
-| lazerlab.net |          200 | https://web.archive.org/web/20180314153547/http://lazerlab.net/        | 20180314153547 |
+|    | url          |   statuscode | archive_url                                                            |      timestamp |
+|---:|:-------------|-------------:|:-----------------------------------------------------------------------|---------------:|
+|  0 | lazerlab.net |          200 | https://web.archive.org/web/20180129175333/http://lazerlab.net:80/     | 20180129175333 |
+|  1 | lazerlab.net |          200 | https://web.archive.org/web/20180203075259/http://www.lazerlab.net:80/ | 20180203075259 |
+|  2 | lazerlab.net |          200 | https://web.archive.org/web/20180301214059/http://lazerlab.net:80/     | 20180301214059 |
+|  3 | lazerlab.net |          200 | https://web.archive.org/web/20180306094604/http://www.lazerlab.net:80/ | 20180306094604 |
+|  4 | lazerlab.net |          200 | https://web.archive.org/web/20180314153547/http://lazerlab.net/        | 20180314153547 |
+
+
+### Batch Collection
+
+`get_url_list_snapshots` runs the same collection over a list of URLs, saving each
+result to `<output_directory>/<md5(url)>.csv`:
+
+```python
+import wayback
+
+wayback.get_url_list_snapshots(
+    urls=["lazerlab.net", "ronalderobertson.com"],
+    start_timestamp="20180101",
+    end_timestamp="20231231",
+    output_directory="data/snapshots",
+)
+```
+
+URLs whose output file already exists are skipped, so an interrupted run can be
+restarted without re-collecting anything. Requests are spaced `sleep_time` seconds
+apart (default 5) to be polite to the API, and an error on one URL is printed and
+skipped rather than stopping the batch.
+
+Both functions also append a JSON record of each run — its parameters, timing, and
+outcome — to `data/wayback-runs.jsonl`; pass `save_log=False` to disable this.
 
 
 ## Dependencies
