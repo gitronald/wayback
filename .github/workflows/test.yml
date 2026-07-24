@@ -1,0 +1,32 @@
+name: Tests
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    # UV_PYTHON outranks the .python-version pin for uv sync and every uv run,
+    # so each matrix cell actually tests its own interpreter. Without it,
+    # bare `uv run` re-resolves to .python-version and every cell silently
+    # runs the same Python.
+    env:
+      UV_PYTHON: ${{ matrix.python-version }}
+    steps:
+      - uses: actions/checkout@v6.0.3
+      - uses: astral-sh/setup-uv@v8.2.0
+      - run: uv python install ${{ matrix.python-version }}
+      - run: uv sync --all-groups
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pyrefly check
+      - run: uv run pytest --cov --cov-report=term-missing
