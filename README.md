@@ -22,7 +22,7 @@ data = wayback.get_url_snapshots(
     end_timestamp="20231231",
 )
 print(f"snapshots found: {len(data):,}")
-show_cols = ['url', 'statuscode', 'archive_url', 'timestamp']
+show_cols = ["url", "statuscode", "archive_url", "timestamp"]
 print(data[show_cols].head(5).to_markdown())
 ```
 
@@ -32,7 +32,7 @@ processing lazerlab.net
 extracting items
 reshaping items
 snapshots found: 207
-``````
+```
 
 | url          |   statuscode | archive_url                                                            |      timestamp |
 |:-------------|-------------:|:-----------------------------------------------------------------------|---------------:|
