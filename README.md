@@ -31,16 +31,16 @@ print(data[show_cols].head(5).to_markdown())
 processing lazerlab.net
 extracting items
 reshaping items
-snapshots found: 207
+snapshots found: 220
 ```
 
-| url          |   statuscode | archive_url                                                            |      timestamp |
-|:-------------|-------------:|:-----------------------------------------------------------------------|---------------:|
-| lazerlab.net |          200 | https://web.archive.org/web/20180129175333/http://lazerlab.net:80/     | 20180129175333 |
-| lazerlab.net |          200 | https://web.archive.org/web/20180203075259/http://www.lazerlab.net:80/ | 20180203075259 |
-| lazerlab.net |          200 | https://web.archive.org/web/20180301214059/http://lazerlab.net:80/     | 20180301214059 |
-| lazerlab.net |          200 | https://web.archive.org/web/20180306094604/http://www.lazerlab.net:80/ | 20180306094604 |
-| lazerlab.net |          200 | https://web.archive.org/web/20180314153547/http://lazerlab.net/        | 20180314153547 |
+|    | url          |   statuscode | archive_url                                                            |      timestamp |
+|---:|:-------------|-------------:|:-----------------------------------------------------------------------|---------------:|
+|  0 | lazerlab.net |          200 | https://web.archive.org/web/20180129175333/http://lazerlab.net:80/     | 20180129175333 |
+|  1 | lazerlab.net |          200 | https://web.archive.org/web/20180203075259/http://www.lazerlab.net:80/ | 20180203075259 |
+|  2 | lazerlab.net |          200 | https://web.archive.org/web/20180301214059/http://lazerlab.net:80/     | 20180301214059 |
+|  3 | lazerlab.net |          200 | https://web.archive.org/web/20180306094604/http://www.lazerlab.net:80/ | 20180306094604 |
+|  4 | lazerlab.net |          200 | https://web.archive.org/web/20180314153547/http://lazerlab.net/        | 20180314153547 |
 
 
 ### Batch Collection
