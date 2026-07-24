@@ -52,7 +52,7 @@ result to `<output_directory>/<md5(url)>.csv`:
 import wayback
 
 wayback.get_url_list_snapshots(
-    urls=["lazerlab.net", "archive.org"],
+    urls=["lazerlab.net", "ronalderobertson.com"],
     start_timestamp="20180101",
     end_timestamp="20231231",
     output_directory="data/snapshots",
