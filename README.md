@@ -43,6 +43,28 @@ snapshots found: 207
 | lazerlab.net |          200 | https://web.archive.org/web/20180314153547/http://lazerlab.net/        | 20180314153547 |
 
 
+### Batch Collection
+
+`get_url_list_snapshots` runs the same collection over a list of URLs, saving each
+result to `<output_directory>/<md5(url)>.csv`:
+
+```python
+import wayback
+
+wayback.get_url_list_snapshots(
+    urls=["lazerlab.net", "archive.org"],
+    start_timestamp="20180101",
+    end_timestamp="20231231",
+    output_directory="data/snapshots",
+)
+```
+
+URLs whose output file already exists are skipped, so an interrupted run can be
+restarted without re-collecting anything. Requests are spaced `sleep_time` seconds
+apart (default 5) to be polite to the API, and an error on one URL is printed and
+skipped rather than stopping the batch.
+
+
 ## Dependencies
 
 `waybackpy`: For interacting with the Wayback Machine API.  
