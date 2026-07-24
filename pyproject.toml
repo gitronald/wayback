@@ -1,6 +1,6 @@
 [project]
 name = "wayback"
-version = "0.1.1"
+version = "0.1.2a0"
 description = "A wrapper for collecting data from the Wayback Machine"
 authors = [
     {name = "Ronald E. Robertson", email = "rer@acm.org"}
