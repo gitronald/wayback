@@ -35,10 +35,10 @@ only-include = [
 [dependency-groups]
 dev = [
     "pre-commit",
-    "pyrefly>=1.0.0",
+    "pyrefly>=1.2.0",
     "pytest>=9.0.2",
     "pytest-cov",
-    "ruff>=0.15",
+    "ruff>=0.16.3",
 ]
 
 [tool.ruff]
