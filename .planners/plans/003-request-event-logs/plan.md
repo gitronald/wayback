@@ -1,10 +1,10 @@
 ---
 id: 3
 slug: request-event-logs
-status: implemented
+status: done
 branch: feature/003-request-event-logs
 created: 2026-11-06T21:22:25-08:00
-concluded:
+concluded: 2026-11-06T21:39:42-08:00
 pr: https://github.com/gitronald/wayback/pull/17
 ---
 
