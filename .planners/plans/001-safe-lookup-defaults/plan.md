@@ -101,3 +101,11 @@ and the changelog. One PR.
   - Worktree: `.worktrees/001-safe-lookup-defaults`
   - PR: pending
 - **2026-11-06T20:40:52-08:00** — PR opened: https://github.com/gitronald/wayback/pull/14
+- **2026-11-06T20:41:23-08:00** — Implemented decisions 1-5 in two commits on the branch.
+  - `save_log` defaults to `False` on both functions; new `log_path` argument, falling back to `LOG_PATH`.
+  - `DEFAULT_UA` is `wayback/<version>` from package metadata, `wayback` without it.
+  - `start_timestamp`/`end_timestamp` default to `None`; the end resolves to today inside the call (via `_today()`), the start passes through as no lower bound. `retrieved_dates` writes an empty start as `-<end>`.
+  - Empty results are zero-row frames with `SNAPSHOT_COLUMNS` (now exported); `_count_snapshots` is gone, replaced by `len(df)`. An empty URL's CSV is header-only.
+  - Tests fake `WaybackMachineCDXServerAPI`; 14 pass, coverage 93%. ruff and pyrefly clean at the docs commit.
+  - README gains a Defaults section; the changelog's `[Unreleased]` names each change under Added/Changed.
+  - Not done here: the 0.2.0 release (decision 6). The release is left for close-out, since plan 002 stacks on this branch and may share the release.
