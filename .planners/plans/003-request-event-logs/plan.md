@@ -100,8 +100,17 @@ separate plan. This one supplies the data that plan will need.
 **Questions:**
 
 1. Deprecate `save_log` in favor of `log_path` alone, or keep both?
+   **Answered 2026-11-06: deprecate.** `log_path` (or `on_event`) alone
+   turns the log on. `save_log=True` still works and raises a
+   `DeprecationWarning`; a later minor release removes it.
 2. Should a log be on by default once a caller names a path through an
    environment variable (for example `WAYBACK_LOG_PATH`), so a script gets
    one without code changes? Off by default with no variable either way.
+   **Answered 2026-11-06: no environment variable.** The log is on only
+   when the caller passes `log_path` or `on_event`, so the package never
+   writes a file the caller did not name.
 3. Should events carry a caller-supplied `run_id`, or should the package
    make one per process?
+   **Answered 2026-11-06: caller-supplied.** Lookups and `JsonlEventLog`
+   take an optional `run_id`, stamped on every event when given and left
+   off when not. The package makes none.
