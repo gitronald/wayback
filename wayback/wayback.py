@@ -8,11 +8,13 @@ import os
 import random
 import threading
 import time
-from collections.abc import Callable
+import warnings
+from collections.abc import Callable, Generator
+from contextlib import contextmanager
 from datetime import datetime
 from email.utils import parsedate_to_datetime
 from importlib.metadata import PackageNotFoundError, version
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 import requests
 import tqdm
@@ -33,6 +35,7 @@ def _default_user_agent() -> str:
 
 
 DEFAULT_UA = _default_user_agent()
+# Where the deprecated `save_log=True` writes when no `log_path` is given
 LOG_PATH = "data/wayback-runs.jsonl"
 
 # Seconds kept between any two lookups the package starts in a process
@@ -70,6 +73,10 @@ SNAPSHOT_COLUMNS = [
     "retrieved_dates",
 ]
 
+# An event: a JSON-serializable dict whose `event` key names its shape
+Event = dict[str, object]
+EventHandler = Callable[[Event], None]
+
 
 class _Pacer:
     """Keep a minimum gap between lookups, across every caller in a process."""
@@ -84,19 +91,112 @@ class _Pacer:
         self._last: float | None = None
         self._lock = threading.Lock()
 
-    def wait(self, min_interval: float) -> None:
-        """Sleep until `min_interval` seconds have passed since the last lookup."""
+    def wait(self, min_interval: float) -> float:
+        """
+        Sleep until `min_interval` seconds have passed since the last lookup.
+
+        Returns:
+            float: Seconds slept, 0 when the gap had already passed.
+        """
         with self._lock:
             now = self.clock()
+            slept = 0.0
             if self._last is not None:
                 gap = self._last + min_interval - now
                 if gap > 0:
                     self.sleep(gap)
+                    slept = gap
                     now = self.clock()
             self._last = now
+            return slept
 
 
 _pacer = _Pacer()
+
+
+class JsonlEventLog:
+    """
+    An event handler that appends each event to a JSON Lines file, one object
+    per line, creating the file's directory when it is missing. Safe to share
+    between threads.
+
+    Args:
+        path (str | os.PathLike[str]): File to append to.
+        run_id (str | None): Stamped as `run_id` on every event that does not
+            already carry one.
+    """
+
+    def __init__(self, path: str | os.PathLike[str], run_id: str | None = None):
+        self.path = os.fspath(path)
+        self.run_id = run_id
+        self._lock = threading.Lock()
+
+    def __call__(self, event: Event) -> None:
+        if self.run_id is not None and "run_id" not in event:
+            event = {**event, "run_id": self.run_id}
+        line = json.dumps(event, default=str) + "\n"
+        with self._lock:
+            log_dir = os.path.dirname(self.path)
+            if log_dir:
+                os.makedirs(log_dir, exist_ok=True)
+            with open(self.path, "a", encoding="utf-8") as f:
+                f.write(line)
+
+
+class _Emitter:
+    """Build events and hand each to every handler; does nothing with none."""
+
+    def __init__(self, handlers: list[EventHandler], run_id: str | None) -> None:
+        self.handlers = handlers
+        self.run_id = run_id
+
+    def __call__(self, kind: str, **fields: object) -> None:
+        if not self.handlers:
+            return
+        event: Event = {"event": kind, "ts": _now()}
+        if self.run_id is not None:
+            event["run_id"] = self.run_id
+        event.update(fields)
+        for handler in self.handlers:
+            handler(dict(event))
+
+
+def _emitter(
+    on_event: EventHandler | None,
+    log_path: str | os.PathLike[str] | None,
+    run_id: str | None,
+    save_log: bool = False,
+) -> _Emitter:
+    """
+    The emitter a public lookup function uses: `on_event` and a
+    `JsonlEventLog` at `log_path`, each when given. The deprecated
+    `save_log=True` with no `log_path` logs to `LOG_PATH`.
+    """
+    if save_log:
+        warnings.warn(
+            "save_log is deprecated and will be removed in a later release; "
+            "pass log_path= (or on_event=) to log events",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        if log_path is None:
+            log_path = LOG_PATH
+    handlers: list[EventHandler] = []
+    if on_event is not None:
+        handlers.append(on_event)
+    if log_path is not None:
+        handlers.append(JsonlEventLog(log_path))
+    return _Emitter(handlers, run_id)
+
+
+def _now() -> str:
+    """The current local time, ISO 8601 with its UTC offset, to milliseconds."""
+    return datetime.now().astimezone().isoformat(timespec="milliseconds")
+
+
+def _error_fields(error: Exception) -> dict[str, object]:
+    """An error as event fields: its message and its exception type."""
+    return {"error": str(error), "error_type": type(error).__name__}
 
 
 def raw_url(timestamp: str, original: str) -> str:
@@ -172,6 +272,157 @@ def _backoff(attempt: int) -> float:
     return BACKOFF_SECONDS * 2**attempt + random.uniform(0, BACKOFF_SECONDS)
 
 
+class _Params(TypedDict):
+    """A lookup's CDX parameters, as carried on its events."""
+
+    start_timestamp: str | None
+    end_timestamp: str | None
+    filters: list[str]
+    collapses: list[str]
+
+
+def _params(
+    start_timestamp: str | None,
+    end_timestamp: str | None,
+    filters: list[str],
+    collapses: list[str] | None,
+) -> _Params:
+    """A lookup's CDX parameters, as carried on its events."""
+    return {
+        "start_timestamp": start_timestamp,
+        "end_timestamp": end_timestamp,
+        "filters": filters,
+        "collapses": collapses or [],
+    }
+
+
+class _Stats:
+    """What a lookup's `lookup` event reports, filled in as the lookup runs."""
+
+    def __init__(self) -> None:
+        self.attempts = 0
+        self.total_waited_s = 0.0
+        self.n_snapshots = 0
+
+
+@contextmanager
+def _lookup_event(
+    emit: _Emitter,
+    function: str,
+    url: str,
+    user_agent: str,
+    params: _Params,
+) -> Generator[_Stats]:
+    """Emit one `lookup` event for the lookup run inside the block, as it ends."""
+    stats = _Stats()
+    started_at = datetime.now().astimezone()
+    start = time.perf_counter()
+
+    def finish(**fields: object) -> None:
+        emit(
+            "lookup",
+            function=function,
+            url=url,
+            user_agent=user_agent,
+            **params,
+            started_at=started_at.isoformat(),
+            duration_seconds=round(time.perf_counter() - start, 3),
+            attempts=stats.attempts,
+            total_waited_s=round(stats.total_waited_s, 3),
+            **fields,
+        )
+
+    try:
+        yield stats
+    except Exception as e:
+        finish(outcome="error", **_error_fields(e))
+        raise
+    finish(outcome="success", n_snapshots=stats.n_snapshots)
+
+
+def _records(
+    url: str,
+    user_agent: str,
+    params: _Params,
+    min_interval: float,
+    max_retries: int,
+    emit: _Emitter,
+    stats: _Stats,
+) -> list[dict[str, str]]:
+    """
+    Run one lookup, retrying refusals, and emit a `request` event per attempt
+    and a `retry` event per retry. `params` come from `_params`, with the end
+    timestamp and filters resolved.
+    """
+    while True:
+        stats.attempts += 1
+        attempt = stats.attempts
+        waited = _pacer.wait(min_interval)
+        stats.total_waited_s += waited
+        start = time.perf_counter()
+
+        def request(**fields: object) -> None:
+            emit(
+                "request",
+                url=url,
+                attempt=attempt,
+                waited_s=round(waited, 3),
+                duration_ms=round((time.perf_counter() - start) * 1000),
+                **fields,
+                **params,
+            )
+
+        try:
+            cdx = WaybackMachineCDXServerAPI(
+                url=url,
+                user_agent=user_agent,
+                start_timestamp=params["start_timestamp"],
+                end_timestamp=params["end_timestamp"],
+                filters=params["filters"],
+                collapses=params["collapses"] or None,
+            )
+            records = [
+                {
+                    "urlkey": item.urlkey,
+                    "timestamp": item.timestamp,
+                    "original": item.original,
+                    "mimetype": item.mimetype,
+                    "statuscode": item.statuscode,
+                    "digest": item.digest,
+                    "length": item.length,
+                    "archive_url": item.archive_url,
+                    "raw_url": raw_url(item.timestamp, item.original),
+                }
+                for item in cdx.snapshots()
+            ]
+        except Exception as e:
+            request(outcome="error", n_records=None, **_error_fields(e))
+            # Retries made so far: every attempt but the first
+            if attempt - 1 >= max_retries or not _is_retryable(e):
+                raise
+            retry_after = _retry_after(e)
+            delay = _backoff(attempt - 1) if retry_after is None else retry_after
+            # The warning and the event come from one place, so they agree
+            logger.warning(
+                "retry %d/%d for %s in %.1fs: %s", attempt, max_retries, url, delay, e
+            )
+            emit(
+                "retry",
+                url=url,
+                attempt=attempt,
+                max_retries=max_retries,
+                delay_s=round(delay, 3),
+                retry_after=retry_after,
+                **_error_fields(e),
+            )
+            _pacer.sleep(delay)
+            stats.total_waited_s += delay
+            continue
+        request(outcome="ok" if records else "empty", n_records=len(records))
+        stats.n_snapshots = len(records)
+        return records
+
+
 def get_url_records(
     url: str,
     start_timestamp: str | None = None,
@@ -182,6 +433,9 @@ def get_url_records(
     status: int | None = None,
     min_interval: float = MIN_INTERVAL,
     max_retries: int = MAX_RETRIES,
+    on_event: EventHandler | None = None,
+    log_path: str | os.PathLike[str] | None = None,
+    run_id: str | None = None,
 ) -> list[dict[str, str]]:
     """
     Get Wayback Machine snapshots for a URL as a list of records. Needs no
@@ -207,133 +461,56 @@ def get_url_records(
         max_retries (int): Times to retry a lookup that was refused or
             throttled, after waybackpy's own retries, with exponential backoff
             and jitter, or the server's `Retry-After` when it sends one.
+        on_event (Callable[[dict], None] | None): Called with each event the
+            lookup emits: a `request` per attempt, a `retry` per retry, and a
+            `lookup` as it ends. An exception it raises is not caught.
+        log_path (str | os.PathLike[str] | None): Append the events to this
+            JSON Lines file, as `JsonlEventLog(log_path)` would. No log is
+            written unless this or `on_event` is given.
+        run_id (str | None): Stamped as `run_id` on every event, to group the
+            lookups of one run.
 
     Returns:
         list[dict[str, str]]: One dict per snapshot, with the fields in
             `RECORD_COLUMNS`; `[]` when there are none.
     """
+    emit = _emitter(on_event, log_path, run_id)
     if end_timestamp is None:
         end_timestamp = _today()
-    resolved_filters = _resolve_filters(filters, status)
-
-    attempt = 0
-    while True:
-        _pacer.wait(min_interval)
-        try:
-            cdx = WaybackMachineCDXServerAPI(
-                url=url,
-                user_agent=user_agent,
-                start_timestamp=start_timestamp,
-                end_timestamp=end_timestamp,
-                filters=resolved_filters,
-                collapses=collapses,
-            )
-            return [
-                {
-                    "urlkey": item.urlkey,
-                    "timestamp": item.timestamp,
-                    "original": item.original,
-                    "mimetype": item.mimetype,
-                    "statuscode": item.statuscode,
-                    "digest": item.digest,
-                    "length": item.length,
-                    "archive_url": item.archive_url,
-                    "raw_url": raw_url(item.timestamp, item.original),
-                }
-                for item in cdx.snapshots()
-            ]
-        except Exception as e:
-            if attempt >= max_retries or not _is_retryable(e):
-                raise
-            retry_after = _retry_after(e)
-            delay = _backoff(attempt) if retry_after is None else retry_after
-            attempt += 1
-            logger.warning(
-                "retry %d/%d for %s in %.1fs: %s", attempt, max_retries, url, delay, e
-            )
-            _pacer.sleep(delay)
+    params = _params(
+        start_timestamp, end_timestamp, _resolve_filters(filters, status), collapses
+    )
+    with _lookup_event(emit, "get_url_records", url, user_agent, params) as stats:
+        return _records(url, user_agent, params, min_interval, max_retries, emit, stats)
 
 
-def _append_run_log(entry: dict[str, object], log_path: str | None = None) -> None:
-    """Append a run record to the JSONL run log at `log_path` (or LOG_PATH)."""
-    path = log_path or LOG_PATH
-    log_dir = os.path.dirname(path)
-    if log_dir and not os.path.exists(log_dir):
-        os.makedirs(log_dir)
-    with open(path, "a", encoding="utf-8") as f:
-        f.write(json.dumps(entry) + "\n")
-
-
-def get_url_snapshots(
+def _snapshots(
     url: str,
-    start_timestamp: str | None = None,
-    end_timestamp: str | None = None,
-    user_agent: str = DEFAULT_UA,
-    verbose: bool = True,
-    save_log: bool = False,
-    log_path: str | None = None,
-    filters: list[str] | None = None,
-    collapses: list[str] | None = None,
-    status: int | None = None,
-    min_interval: float = MIN_INTERVAL,
-    max_retries: int = MAX_RETRIES,
+    start_timestamp: str | None,
+    end_timestamp: str | None,
+    user_agent: str,
+    verbose: bool,
+    filters: list[str] | None,
+    collapses: list[str] | None,
+    status: int | None,
+    min_interval: float,
+    max_retries: int,
+    emit: _Emitter,
 ) -> pl.DataFrame:
-    """
-    Get Wayback Machine snapshots for a given URL as a DataFrame, built on
-    `get_url_records`.
-
-    Args:
-        url (str): URL to search.
-        start_timestamp (str | None): Start timestamp for the search. `None`
-            (the default) sets no lower bound.
-        end_timestamp (str | None): End timestamp for the search. `None` (the
-            default) means today, read when the function is called.
-        user_agent (str): User agent to use for the request. Defaults to
-            `wayback/<version>`.
-        verbose (bool): Whether to print progress.
-        save_log (bool): Whether to append a record of the run and its
-            outcome to the JSONL run log.
-        log_path (str | None): Where to write the run log when `save_log` is
-            set. `None` writes to `LOG_PATH` (`data/wayback-runs.jsonl`,
-            relative to the working directory).
-        filters, collapses, status, min_interval, max_retries: As in
-            `get_url_records`.
-
-    Returns:
-        pl.DataFrame: One row per snapshot, with the columns in
-            `SNAPSHOT_COLUMNS`. No snapshots gives zero rows with the same
-            columns.
-    """
+    """`get_url_snapshots` with its emitter resolved, for reuse by the batch."""
     import polars as pl
 
     if end_timestamp is None:
         end_timestamp = _today()
-    started_at = datetime.now().astimezone()
-    log_entry: dict[str, object] = {
-        "function": "get_url_snapshots",
-        "url": url,
-        "start_timestamp": start_timestamp,
-        "end_timestamp": end_timestamp,
-        "user_agent": user_agent,
-        "filters": _resolve_filters(filters, status),
-        "collapses": collapses or [],
-        "started_at": started_at.isoformat(),
-    }
-
-    try:
+    params = _params(
+        start_timestamp, end_timestamp, _resolve_filters(filters, status), collapses
+    )
+    with _lookup_event(emit, "get_url_snapshots", url, user_agent, params) as stats:
         if verbose:
             print(f"processing {url}")
             print("extracting items")
-        records = get_url_records(
-            url,
-            start_timestamp=start_timestamp,
-            end_timestamp=end_timestamp,
-            user_agent=user_agent,
-            filters=filters,
-            collapses=collapses,
-            status=status,
-            min_interval=min_interval,
-            max_retries=max_retries,
+        records = _records(
+            url, user_agent, params, min_interval, max_retries, emit, stats
         )
 
         if verbose:
@@ -348,28 +525,65 @@ def get_url_snapshots(
             pl.lit(f"{start_timestamp or ''}-{end_timestamp}").alias("retrieved_dates"),
             pl.lit(url).alias("url"),
         )
-        df = df.select(SNAPSHOT_COLUMNS)
-    except Exception as e:
-        if save_log:
-            duration = (datetime.now().astimezone() - started_at).total_seconds()
-            log_entry.update(
-                duration_seconds=round(duration, 3),
-                outcome="error",
-                error=str(e),
-            )
-            _append_run_log(log_entry, log_path)
-        raise
+        return df.select(SNAPSHOT_COLUMNS)
 
-    if save_log:
-        duration = (datetime.now().astimezone() - started_at).total_seconds()
-        log_entry.update(
-            duration_seconds=round(duration, 3),
-            outcome="success",
-            n_snapshots=len(df),
-        )
-        _append_run_log(log_entry, log_path)
 
-    return df
+def get_url_snapshots(
+    url: str,
+    start_timestamp: str | None = None,
+    end_timestamp: str | None = None,
+    user_agent: str = DEFAULT_UA,
+    verbose: bool = True,
+    save_log: bool = False,
+    log_path: str | os.PathLike[str] | None = None,
+    filters: list[str] | None = None,
+    collapses: list[str] | None = None,
+    status: int | None = None,
+    min_interval: float = MIN_INTERVAL,
+    max_retries: int = MAX_RETRIES,
+    on_event: EventHandler | None = None,
+    run_id: str | None = None,
+) -> pl.DataFrame:
+    """
+    Get Wayback Machine snapshots for a given URL as a DataFrame, built on
+    `get_url_records`.
+
+    Args:
+        url (str): URL to search.
+        start_timestamp (str | None): Start timestamp for the search. `None`
+            (the default) sets no lower bound.
+        end_timestamp (str | None): End timestamp for the search. `None` (the
+            default) means today, read when the function is called.
+        user_agent (str): User agent to use for the request. Defaults to
+            `wayback/<version>`.
+        verbose (bool): Whether to print progress.
+        save_log (bool): Deprecated; pass `log_path` instead. `True` logs the
+            events to `log_path`, or to `LOG_PATH` (`data/wayback-runs.jsonl`,
+            relative to the working directory) when no path is given, and
+            raises a `DeprecationWarning`.
+        log_path, on_event, run_id: As in `get_url_records`.
+        filters, collapses, status, min_interval, max_retries: As in
+            `get_url_records`.
+
+    Returns:
+        pl.DataFrame: One row per snapshot, with the columns in
+            `SNAPSHOT_COLUMNS`. No snapshots gives zero rows with the same
+            columns.
+    """
+    emit = _emitter(on_event, log_path, run_id, save_log=save_log)
+    return _snapshots(
+        url,
+        start_timestamp,
+        end_timestamp,
+        user_agent,
+        verbose,
+        filters,
+        collapses,
+        status,
+        min_interval,
+        max_retries,
+        emit,
+    )
 
 
 def get_url_list_snapshots(
@@ -380,12 +594,14 @@ def get_url_list_snapshots(
     sleep_time: int = 5,
     verbose: bool = False,
     save_log: bool = False,
-    log_path: str | None = None,
+    log_path: str | os.PathLike[str] | None = None,
     filters: list[str] | None = None,
     collapses: list[str] | None = None,
     status: int | None = None,
     min_interval: float = MIN_INTERVAL,
     max_retries: int = MAX_RETRIES,
+    on_event: EventHandler | None = None,
+    run_id: str | None = None,
 ) -> None:
     """
     Process a list of URLs to collect Wayback snapshots and save to
@@ -402,17 +618,17 @@ def get_url_list_snapshots(
         sleep_time (int): Number of seconds to sleep after each URL, on top of
             the `min_interval` kept between lookups.
         verbose (bool): Whether to print progress.
-        save_log (bool): Whether to append a record of the run — settings,
-            counts, and per-URL outcomes — to the JSONL run log.
-        log_path (str | None): Where to write the run log when `save_log` is
-            set. `None` writes to `LOG_PATH` (`data/wayback-runs.jsonl`,
-            relative to the working directory).
+        save_log (bool): Deprecated; as in `get_url_snapshots`.
+        log_path, on_event, run_id: As in `get_url_records`. Each URL's
+            lookup emits its own events, and the run ends with a `batch`
+            event: settings, counts, and per-URL outcomes.
         filters, collapses, status, min_interval, max_retries: As in
             `get_url_records`, applied to every URL.
 
     A URL with no snapshots gets a header-only CSV.
     """
     assert output_directory is not None, "output_directory must be specified"
+    emit = _emitter(on_event, log_path, run_id, save_log=save_log)
     if end_timestamp is None:
         end_timestamp = _today()
     if not os.path.exists(output_directory):
@@ -434,19 +650,18 @@ def get_url_list_snapshots(
             continue
 
         try:
-            # The inner call logs nothing itself; its outcome is recorded in
-            # this run's per-URL results instead
-            df = get_url_snapshots(
+            df = _snapshots(
                 url,
                 start_timestamp,
                 end_timestamp,
-                verbose=verbose,
-                save_log=False,
-                filters=filters,
-                collapses=collapses,
-                status=status,
-                min_interval=min_interval,
-                max_retries=max_retries,
+                DEFAULT_UA,
+                verbose,
+                filters,
+                collapses,
+                status,
+                min_interval,
+                max_retries,
+                emit,
             )
             df.write_csv(output_path)
             if verbose:
@@ -471,26 +686,23 @@ def get_url_list_snapshots(
             )
         time.sleep(sleep_time)
 
-    if save_log:
-        duration = (datetime.now().astimezone() - started_at).total_seconds()
-        statuses = [r["status"] for r in results]
-        _append_run_log(
-            {
-                "function": "get_url_list_snapshots",
-                "n_urls": len(urls),
-                "start_timestamp": start_timestamp,
-                "end_timestamp": end_timestamp,
-                "filters": _resolve_filters(filters, status),
-                "collapses": collapses or [],
-                "output_directory": output_directory,
-                "sleep_time": sleep_time,
-                "min_interval": min_interval,
-                "started_at": started_at.isoformat(),
-                "duration_seconds": round(duration, 3),
-                "n_saved": statuses.count("saved"),
-                "n_skipped": statuses.count("skipped"),
-                "n_errors": statuses.count("error"),
-                "results": results,
-            },
-            log_path,
-        )
+    duration = (datetime.now().astimezone() - started_at).total_seconds()
+    statuses = [r["status"] for r in results]
+    emit(
+        "batch",
+        function="get_url_list_snapshots",
+        n_urls=len(urls),
+        start_timestamp=start_timestamp,
+        end_timestamp=end_timestamp,
+        filters=_resolve_filters(filters, status),
+        collapses=collapses or [],
+        output_directory=output_directory,
+        sleep_time=sleep_time,
+        min_interval=min_interval,
+        started_at=started_at.isoformat(),
+        duration_seconds=round(duration, 3),
+        n_saved=statuses.count("saved"),
+        n_skipped=statuses.count("skipped"),
+        n_errors=statuses.count("error"),
+        results=results,
+    )

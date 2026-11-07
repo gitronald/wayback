@@ -6,8 +6,10 @@ import json
 import subprocess
 import sys
 import textwrap
+import warnings
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import polars as pl
 import pytest
@@ -101,11 +103,20 @@ def test_public_api() -> None:
     assert callable(wayback.raw_url)
 
 
-# Run log
+# Run log and events
+
+
+def _events(path: Path) -> list[dict[str, Any]]:
+    return [json.loads(line) for line in path.read_text().splitlines()]
+
+
+def _kinds(events: list[dict[str, object]]) -> list[object]:
+    return [e["event"] for e in events]
 
 
 def test_defaults_write_no_log(tmp_path, monkeypatch, fake_cdx) -> None:
     monkeypatch.chdir(tmp_path)
+    wayback.get_url_records("example.com")
     wayback.get_url_snapshots("example.com", verbose=False)
     _skip_url(tmp_path / "snapshots", "example.com")
     wayback.get_url_list_snapshots(
@@ -118,39 +129,153 @@ def test_defaults_write_no_log(tmp_path, monkeypatch, fake_cdx) -> None:
     assert not (tmp_path / "data").exists()
 
 
-def test_save_log_writes_to_log_path(tmp_path, monkeypatch, fake_cdx) -> None:
+def test_log_path_alone_turns_the_log_on(tmp_path, monkeypatch, fake_cdx) -> None:
     monkeypatch.chdir(tmp_path)
     fake_cdx.rows = [_snapshot("20200101000000")]
     log_path = tmp_path / "logs" / "runs.jsonl"
-    wayback.get_url_snapshots(
-        "example.com", verbose=False, save_log=True, log_path=str(log_path)
-    )
-    entry = json.loads(log_path.read_text())
-    assert entry["outcome"] == "success"
-    assert entry["n_snapshots"] == 1
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # no deprecation warning without save_log
+        wayback.get_url_snapshots("example.com", verbose=False, log_path=log_path)
+    events = _events(log_path)
+    assert _kinds(events) == ["request", "lookup"]
+    lookup = events[-1]
+    assert lookup["function"] == "get_url_snapshots"
+    assert lookup["outcome"] == "success"
+    assert lookup["n_snapshots"] == 1
     assert not (tmp_path / "data").exists()
+
+
+def test_records_log_path(tmp_path, fake_cdx) -> None:
+    log_path = tmp_path / "runs.jsonl"
+    wayback.get_url_records("example.com", log_path=str(log_path))
+    events = _events(log_path)
+    assert _kinds(events) == ["request", "lookup"]
+    assert events[0]["outcome"] == "empty"
+    assert events[1]["function"] == "get_url_records"
+    assert events[1]["n_snapshots"] == 0
+
+
+def test_save_log_is_deprecated(tmp_path, fake_cdx) -> None:
+    log_path = tmp_path / "runs.jsonl"
+    with pytest.warns(DeprecationWarning, match="save_log is deprecated"):
+        wayback.get_url_snapshots(
+            "example.com", verbose=False, save_log=True, log_path=str(log_path)
+        )
+    assert _kinds(_events(log_path)) == ["request", "lookup"]
 
 
 def test_save_log_without_path_writes_log_path_default(
     tmp_path, monkeypatch, fake_cdx
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    wayback.get_url_snapshots("example.com", verbose=False, save_log=True)
-    entry = json.loads((tmp_path / wb.LOG_PATH).read_text())
-    assert entry["function"] == "get_url_snapshots"
-    assert entry["n_snapshots"] == 0
+    with pytest.warns(DeprecationWarning):
+        wayback.get_url_snapshots("example.com", verbose=False, save_log=True)
+    lookup = _events(tmp_path / wb.LOG_PATH)[-1]
+    assert lookup["function"] == "get_url_snapshots"
+    assert lookup["n_snapshots"] == 0
 
 
-def test_save_log_records_errors(tmp_path, fake_cdx) -> None:
-    fake_cdx.refuse = {"example.com"}
+def test_lookup_event_keeps_the_run_log_fields(fake_cdx) -> None:
+    events: list[dict[str, object]] = []
+    wayback.get_url_snapshots(
+        "example.com",
+        "20200101",
+        "20201231",
+        verbose=False,
+        status=200,
+        collapses=["digest"],
+        on_event=events.append,
+    )
+    lookup = events[-1]
+    # Every field the v0.2.0 run log wrote, plus the new ones
+    assert {
+        "function",
+        "url",
+        "start_timestamp",
+        "end_timestamp",
+        "user_agent",
+        "filters",
+        "collapses",
+        "started_at",
+        "duration_seconds",
+        "outcome",
+        "n_snapshots",
+        "attempts",
+        "total_waited_s",
+        "event",
+        "ts",
+    } <= set(lookup)
+    assert lookup["filters"] == ["statuscode:200"]
+    assert lookup["collapses"] == ["digest"]
+    assert lookup["attempts"] == 1
+    assert "run_id" not in lookup
+
+
+def test_request_event(fake_cdx) -> None:
+    fake_cdx.rows = [_snapshot("20200101000000"), _snapshot("20210101000000")]
+    events: list[dict[str, object]] = []
+    wayback.get_url_records(
+        "example.com", "20200101", "20211231", on_event=events.append
+    )
+    request = events[0]
+    assert request["event"] == "request"
+    assert request["url"] == "example.com"
+    assert request["attempt"] == 1
+    assert request["waited_s"] == 0
+    assert isinstance(request["duration_ms"], int) and request["duration_ms"] >= 0
+    assert request["outcome"] == "ok"
+    assert request["n_records"] == 2
+    assert request["start_timestamp"] == "20200101"
+    assert request["end_timestamp"] == "20211231"
+    assert request["filters"] == [] and request["collapses"] == []
+    assert "error" not in request
+
+
+def test_errors_are_logged_and_raised(fake_cdx) -> None:
+    fake_cdx.errors = [ValueError("bad filter")]
+    events: list[dict[str, object]] = []
+    with pytest.raises(ValueError):
+        wayback.get_url_records("example.com", on_event=events.append)
+    assert _kinds(events) == ["request", "lookup"]
+    for event in events:
+        assert event["error"] == "bad filter"
+        assert event["error_type"] == "ValueError"
+    assert events[0]["outcome"] == "error"
+    assert events[0]["n_records"] is None
+    assert events[1]["outcome"] == "error"
+
+
+def test_pacer_wait_is_reported(clock, fake_cdx) -> None:
+    events: list[dict[str, object]] = []
+    wayback.get_url_records("example.com", min_interval=5)
+    clock.now += 2
+    wayback.get_url_records("example.com", min_interval=5, on_event=events.append)
+    assert events[0]["waited_s"] == pytest.approx(3)
+    assert events[1]["total_waited_s"] == pytest.approx(3)
+
+
+def test_run_id_is_stamped_on_every_event(tmp_path, fake_cdx) -> None:
+    events: list[dict[str, object]] = []
+    wayback.get_url_records("example.com", on_event=events.append, run_id="r1")
+    assert {e["run_id"] for e in events} == {"r1"}
+
+
+def test_on_event_and_log_path_both_get_events(tmp_path, fake_cdx) -> None:
+    events: list[dict[str, object]] = []
     log_path = tmp_path / "runs.jsonl"
-    with pytest.raises(ConnectionError):
-        wayback.get_url_snapshots(
-            "example.com", verbose=False, save_log=True, log_path=str(log_path)
-        )
-    entry = json.loads(log_path.read_text())
-    assert entry["outcome"] == "error"
-    assert entry["error"] == "refused"
+    wayback.get_url_records("example.com", on_event=events.append, log_path=log_path)
+    assert events == _events(log_path)
+
+
+def test_jsonl_event_log_round_trip(tmp_path) -> None:
+    path = tmp_path / "nested" / "events.jsonl"
+    log = wayback.JsonlEventLog(path, run_id="r2")
+    log({"event": "request", "url": "a"})
+    log({"event": "lookup", "url": "a", "run_id": "own"})
+    assert _events(path) == [
+        {"event": "request", "url": "a", "run_id": "r2"},
+        {"event": "lookup", "url": "a", "run_id": "own"},
+    ]
 
 
 def test_batch_run_log(tmp_path) -> None:
@@ -165,13 +290,12 @@ def test_batch_run_log(tmp_path) -> None:
         end_timestamp="20201231",
         output_directory=str(output_directory),
         sleep_time=0,
-        save_log=True,
         log_path=str(log_path),
     )
 
-    log_lines = log_path.read_text().splitlines()
-    assert len(log_lines) == 1
-    entry = json.loads(log_lines[0])
+    events = _events(log_path)
+    assert _kinds(events) == ["batch"]
+    entry = events[0]
     assert entry["function"] == "get_url_list_snapshots"
     assert entry["n_urls"] == 1
     assert entry["n_saved"] == 0
@@ -270,10 +394,13 @@ def test_batch_records_saved_and_error(tmp_path, fake_cdx) -> None:
         "20201231",
         output_directory=str(tmp_path / "out"),
         sleep_time=0,
-        save_log=True,
         log_path=str(log_path),
     )
-    entry = json.loads(log_path.read_text())
+    events = _events(log_path)
+    lookups = [e for e in events if e["event"] == "lookup"]
+    assert [e["outcome"] for e in lookups] == ["success", "error"]
+    entry = events[-1]
+    assert entry["event"] == "batch"
     assert [r["status"] for r in entry["results"]] == ["saved", "error"]
     assert entry["results"][0]["n_snapshots"] == 1
 
@@ -479,3 +606,52 @@ def test_other_errors_are_not_retried(clock, flaky, error) -> None:
         wayback.get_url_records("example.com", min_interval=0)
     assert len(flaky.calls) == 1
     assert clock.sleeps == []
+
+
+def test_retry_events(clock, flaky, caplog) -> None:
+    flaky.errors = [requests.ConnectionError("[Errno 111] Connection refused")]
+    events: list[dict[str, object]] = []
+    wayback.get_url_records("example.com", min_interval=0, on_event=events.append)
+    assert _kinds(events) == ["request", "retry", "request", "lookup"]
+    first, retry, second, lookup = events
+    assert first["outcome"] == "error" and first["attempt"] == 1
+    assert first["error_type"] == "ConnectionError"
+    assert retry["attempt"] == 1 and retry["max_retries"] == wb.MAX_RETRIES
+    assert retry["delay_s"] == wb.BACKOFF_SECONDS
+    assert retry["retry_after"] is None
+    assert retry["error"] == "[Errno 111] Connection refused"
+    assert second["outcome"] == "ok" and second["attempt"] == 2
+    assert lookup["attempts"] == 2
+    assert lookup["total_waited_s"] == wb.BACKOFF_SECONDS
+    # The warning says the same as the event
+    assert "retry 1/3 for example.com in 5.0s" in caplog.text
+
+
+def test_retry_event_carries_retry_after(clock, flaky) -> None:
+    flaky.errors = [_http_error(429, retry_after="42")]
+    events: list[dict[str, object]] = []
+    wayback.get_url_records("example.com", min_interval=0, on_event=events.append)
+    retry = events[1]
+    assert retry["retry_after"] == 42.0 and retry["delay_s"] == 42.0
+    assert retry["error_type"] == "HTTPError"
+
+
+def test_final_failure_events(clock, flaky) -> None:
+    flaky.errors = [requests.ConnectionError("refused") for _ in range(3)]
+    events: list[dict[str, object]] = []
+    with pytest.raises(requests.ConnectionError):
+        wayback.get_url_records(
+            "example.com", min_interval=0, max_retries=2, on_event=events.append
+        )
+    assert _kinds(events) == [
+        "request",
+        "retry",
+        "request",
+        "retry",
+        "request",
+        "lookup",
+    ]
+    lookup = events[-1]
+    assert lookup["outcome"] == "error" and lookup["attempts"] == 3
+    assert lookup["error"] == "refused"
+    assert lookup["total_waited_s"] == wb.BACKOFF_SECONDS * 3
