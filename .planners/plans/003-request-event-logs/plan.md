@@ -117,7 +117,15 @@ separate plan. This one supplies the data that plan will need.
 
 ## Handoff
 
-**State:** draft, not started.
+**State:** done. Implemented, reviewed, and merged through the PR; ships
+in the next release (the CHANGELOG's `[Unreleased]` holds it).
+
+**Not verified:** the events against the live CDX API. Every test uses the
+fake client and clock; the first real run is the downstream caller's.
+
+**Handed on:** removing `save_log` (question 1) to a later minor release,
+not yet planned. Pacing, 429 detection, and block handling to the separate
+rate-limit plan named under *Relation to other work*, not yet opened.
 
 **Questions:**
 
@@ -136,3 +144,15 @@ separate plan. This one supplies the data that plan will need.
    **Answered 2026-11-06: caller-supplied.** Lookups and `JsonlEventLog`
    take an optional `run_id`, stamped on every event when given and left
    off when not. The package makes none.
+
+## Retrospective
+
+- The plan's three event shapes held. The one addition was a `batch` event,
+  needed so `get_url_list_snapshots` keeps the record its old run log wrote.
+- Keeping the `lookup` event a superset of the old run-log record made the
+  format change cheap to explain: old readers filter on `event == "lookup"`.
+- The review earned its keep on handler behavior, which the draft never
+  specified: what a raising handler does, and whether a handler can change
+  the lookup's state. Specify both up front the next time a callback is added.
+- One Log entry named a commit that did not exist; it was caught and fixed
+  before the push. Read a sha from `git log` before writing it down.
