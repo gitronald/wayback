@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The sdist now ships `CHANGELOG.md`
+- Locked dependencies updated, including the security fixes in urllib3 2.8.0 and
+  certifi 2026.10.19, and pandas 3.1.0 and tqdm 4.70.1
+- Development tooling and CI synced with the project template: a coverage gate on the
+  test run, ruff 0.17 and pyrefly 1.4, and SHA-pinned GitHub Actions
+
 ## [0.1.1] - 2026-07-24
 
 ### Added
