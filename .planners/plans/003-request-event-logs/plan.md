@@ -110,6 +110,10 @@ separate plan. This one supplies the data that plan will need.
     - Tests: 49 pass (11 new event tests, the four run-log tests rewritten for the event stream). ruff and pyrefly are clean (one pre-existing `tqdm` stub warning). Ran on the code committed as `e0b5fa5` (the docs commit after it touches no code), with `dev` not moved since activation, so no base merge was needed.
     - README section "Logging requests" with an example line per event shape and the gaps (waybackpy's internal retries, 429-as-data); CHANGELOG `[Unreleased]` entries under Added, Changed, and Deprecated.
 - **2026-11-06T21:35:44-08:00** — Implemented: 4 commits ahead of `dev`.
+- **2026-11-06T21:40:03-08:00** — Review gate run (medium, `/code-review`: correctness and simplification finders, one verifier) and its fixes committed as `harden event handlers and log writes after review`.
+    - Review follow-up: 10 candidates, 5 kept. Actioned, each with a test: an empty `log_path` now counts as none (it raised on `open('')`); a handler that raises is not called again for the `lookup` event, and the lookup's own error stays as the exception's context; each handler gets a deep copy of the event, so editing it cannot change the next attempt's filters or the caller's `collapses`; one module-level lock serializes every `JsonlEventLog` write; the batch event takes its parameters from `_params`. Four of the five tests fail on the pre-fix code; the lock and batch tests are regression guards (the interleave was not reproduced, and the batch values already matched).
+    - Conscious no-ops: per-event `makedirs` and open (negligible beside a paced request, and each event is on disk as written); the `_Params` TypedDict (pyrefly needs the types); `JsonlEventLog(run_id=...)` (for callers sharing one writer through `on_event`); the closure and context-manager structure.
+    - Checks at `f31f71a`: ruff check, ruff format --check, pyrefly (the pre-existing `tqdm` stub warning only), pytest 55 passed. Review posted to the PR.
 
 ## Handoff
 
