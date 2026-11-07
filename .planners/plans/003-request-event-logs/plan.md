@@ -5,7 +5,7 @@ status: active
 branch: feature/003-request-event-logs
 created: 2026-11-06T21:22:25-08:00
 concluded:
-pr:
+pr: https://github.com/gitronald/wayback/pull/17
 ---
 
 # Log every lookup and request as structured events
@@ -100,6 +100,7 @@ separate plan. This one supplies the data that plan will need.
   - Base: `dev` at `6ea78ff`
   - Worktree: `.worktrees/003-request-event-logs`
   - PR: pending
+- **2026-11-06T21:34:43-08:00** — PR opened: https://github.com/gitronald/wayback/pull/17
 
 ## Handoff
 
