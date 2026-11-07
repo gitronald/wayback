@@ -1,8 +1,8 @@
 ---
 id: 2
 slug: lookup-filters-records-and-retries
-status: draft
-branch:
+status: active
+branch: feature/002-lookup-filters-records-and-retries
 created: 2026-11-06T20:34:25-08:00
 concluded:
 pr:
@@ -116,3 +116,11 @@ if the waybackpy timeout question needs an upstream change.
 - Fetching archived pages inside the package (decision 4).
 - Save Page Now (asking the Wayback Machine to capture a URL).
 - Dropping pandas as a dependency before 1.0 (decision 3).
+
+## Log
+
+- **2026-11-06T20:41:33-08:00** — Activated.
+  - Branch: `feature/002-lookup-filters-records-and-retries`
+  - Base: `dev` at `4a9bb08`
+  - Worktree: `.worktrees/002-lookup-filters-records-and-retries`
+  - PR: pending
