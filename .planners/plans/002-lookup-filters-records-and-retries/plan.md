@@ -5,7 +5,7 @@ status: active
 branch: feature/002-lookup-filters-records-and-retries
 created: 2026-11-06T20:34:25-08:00
 concluded:
-pr:
+pr: https://github.com/gitronald/wayback/pull/15
 ---
 
 # Add status filters, record output, raw copies, and retries
@@ -124,3 +124,4 @@ if the waybackpy timeout question needs an upstream change.
   - Base: `dev` at `4a9bb08`
   - Worktree: `.worktrees/002-lookup-filters-records-and-retries`
   - PR: pending
+- **2026-11-06T20:44:08-08:00** — PR opened: https://github.com/gitronald/wayback/pull/15
