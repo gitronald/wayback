@@ -1,7 +1,7 @@
 ---
 id: 2
 slug: lookup-filters-records-and-retries
-status: active
+status: implemented
 branch: feature/002-lookup-filters-records-and-retries
 created: 2026-11-06T20:34:25-08:00
 concluded:
@@ -136,3 +136,4 @@ if the waybackpy timeout question needs an upstream change.
   - Decision 3 follow-up, not started: the `wayback[pandas]` optional extra for 1.0.
   - Not done here: the 0.3.0 release (decision 6). With 001 unreleased too, both may ship as one minor release at close-out.
   - Tests: 32 pass, coverage 96%, all with the CDX client faked and the pacer on a fake clock; a subprocess with pandas blocked imports the package and runs `get_url_records`. ruff and pyrefly clean.
+- **2026-11-06T20:44:52-08:00** — Implemented: 11 commits ahead of `dev`.
