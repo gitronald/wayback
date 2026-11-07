@@ -210,6 +210,9 @@ wayback.get_url_records("https://example.com/", on_event=events.append)
 callers who want to share one between functions or add it to their own handler. An
 exception raised by `on_event` is not caught.
 
+Events record each URL looked up, so a log of private or sensitive URLs is itself
+sensitive: keep it where the URLs would be kept.
+
 A lookup refused once and then answered writes four lines:
 
 ```json
