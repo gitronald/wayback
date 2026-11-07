@@ -14,7 +14,12 @@ pip install git+https://github.com/gitronald/wayback
 ## Example Usage
 
 ```python
+import polars as pl
+
 import wayback
+
+pl.Config.set_tbl_width_chars(180)
+pl.Config.set_fmt_str_lengths(80)
 
 data = wayback.get_url_snapshots(
     url="lazerlab.net",
@@ -23,7 +28,7 @@ data = wayback.get_url_snapshots(
 )
 print(f"snapshots found: {len(data):,}")
 show_cols = ["url", "statuscode", "archive_url", "timestamp"]
-print(data[show_cols].head(5).to_markdown())
+print(data.select(show_cols).head(5))
 ```
 
 **Output**:
@@ -34,13 +39,20 @@ reshaping items
 snapshots found: 220
 ```
 
-|    | url          |   statuscode | archive_url                                                            |      timestamp |
-|---:|:-------------|-------------:|:-----------------------------------------------------------------------|---------------:|
-|  0 | lazerlab.net |          200 | https://web.archive.org/web/20180129175333/http://lazerlab.net:80/     | 20180129175333 |
-|  1 | lazerlab.net |          200 | https://web.archive.org/web/20180203075259/http://www.lazerlab.net:80/ | 20180203075259 |
-|  2 | lazerlab.net |          200 | https://web.archive.org/web/20180301214059/http://lazerlab.net:80/     | 20180301214059 |
-|  3 | lazerlab.net |          200 | https://web.archive.org/web/20180306094604/http://www.lazerlab.net:80/ | 20180306094604 |
-|  4 | lazerlab.net |          200 | https://web.archive.org/web/20180314153547/http://lazerlab.net/        | 20180314153547 |
+```
+shape: (5, 4)
+┌──────────────┬────────────┬────────────────────────────────────────────────────────────────────────┬────────────────┐
+│ url          ┆ statuscode ┆ archive_url                                                            ┆ timestamp      │
+│ ---          ┆ ---        ┆ ---                                                                    ┆ ---            │
+│ str          ┆ str        ┆ str                                                                    ┆ str            │
+╞══════════════╪════════════╪════════════════════════════════════════════════════════════════════════╪════════════════╡
+│ lazerlab.net ┆ 200        ┆ https://web.archive.org/web/20180129175333/http://lazerlab.net:80/     ┆ 20180129175333 │
+│ lazerlab.net ┆ 200        ┆ https://web.archive.org/web/20180203075259/http://www.lazerlab.net:80/ ┆ 20180203075259 │
+│ lazerlab.net ┆ 200        ┆ https://web.archive.org/web/20180301214059/http://lazerlab.net:80/     ┆ 20180301214059 │
+│ lazerlab.net ┆ 200        ┆ https://web.archive.org/web/20180306094604/http://www.lazerlab.net:80/ ┆ 20180306094604 │
+│ lazerlab.net ┆ 200        ┆ https://web.archive.org/web/20180314153547/http://lazerlab.net/        ┆ 20180314153547 │
+└──────────────┴────────────┴────────────────────────────────────────────────────────────────────────┴────────────────┘
+```
 
 
 ### Batch Collection
@@ -73,7 +85,7 @@ A URL with no snapshots gets a header-only CSV.
   `start_timestamp=None` (the default) sets no lower bound, and
   `end_timestamp=None` means the date of the call. Pass `YYYYMMDD` strings to narrow
   it.
-- **No snapshots**: an empty result is a DataFrame with zero rows and the usual
+- **No snapshots**: an empty result is a polars DataFrame with zero rows and the usual
   columns (`wayback.SNAPSHOT_COLUMNS`), so `len(data)` is the snapshot count.
 - **User-Agent**: requests identify themselves as `wayback/<version>`. Pass
   `user_agent=` to send another.
@@ -94,7 +106,7 @@ accepted by `get_url_records`, `get_url_snapshots`, and `get_url_list_snapshots`
 
 `get_url_records` returns the snapshots as a list of dicts with string values (the
 fields in `wayback.RECORD_COLUMNS`), or `[]` when there are none. It does not need
-pandas. `get_url_snapshots` builds its DataFrame from the same records.
+polars. `get_url_snapshots` builds its DataFrame from the same records.
 
 ```python
 import wayback
@@ -172,7 +184,7 @@ Two limits come from waybackpy 3.0.6, which makes the HTTP requests:
 `waybackpy`: For interacting with the Wayback Machine API.  
 `requests`: For making HTTP requests.  
 `hashlib`: For generating hash values from URLs.  
-`pandas`: For the DataFrame functions (`get_url_snapshots`, `get_url_list_snapshots`); `get_url_records` and `raw_url` import without it.  
+`polars`: For the DataFrame functions (`get_url_snapshots`, `get_url_list_snapshots`); `get_url_records` and `raw_url` import without it.  
 `tqdm`: For providing progress bars during data collection.  
 
 
