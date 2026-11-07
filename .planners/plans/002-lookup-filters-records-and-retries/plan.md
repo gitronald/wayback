@@ -125,3 +125,14 @@ if the waybackpy timeout question needs an upstream change.
   - Worktree: `.worktrees/002-lookup-filters-records-and-retries`
   - PR: pending
 - **2026-11-06T20:44:08-08:00** — PR opened: https://github.com/gitronald/wayback/pull/15
+- **2026-11-06T20:44:50-08:00** — Implemented decisions 1, 2, 4, and 5, and decision 3's import move, stacked on plan 001's branch (merged in with `--no-ff`, since this plan builds on its signatures). PR 15 shows 001's commits until PR 14 merges.
+  - `get_url_records` returns `list[dict[str, str]]` with the fields in `RECORD_COLUMNS` (CDX fields, `archive_url`, `raw_url`). `get_url_snapshots` builds its frame from it and parses `datetime_timestamp` with pandas; `SNAPSHOT_COLUMNS` gains `raw_url` after `archive_url`.
+  - `filters`, `collapses`, and `status` on all three lookup functions; `status` appends `statuscode:<status>` to a copy of `filters`. The run log records the resolved filters.
+  - `raw_url(timestamp, original)` builds the `id_` form. Fetching stays the caller's; the README shows the pattern.
+  - Pacer: a module-level `_Pacer` (lock, injectable clock and sleep) keeps `min_interval` (default 5 s) between lookup attempts in a process. Pages inside one waybackpy lookup are not paced, since waybackpy offers no hook between them.
+  - Retries: up to `max_retries` (default 3) on `requests.ConnectionError` or the builtin one, on `requests.exceptions.RetryError` (waybackpy's urllib3 retries on 500/502/503/504 ran out), and on an error whose response is 429 or 503. Backoff 5 s * 2^n plus up to 5 s jitter, or `Retry-After` (seconds or HTTP date). Each retry is a warning on the `wayback` logger.
+  - Risk confirmed: waybackpy 3.0.6, its newest release on PyPI, calls `session.get` with no timeout and takes no timeout argument. Not patched; recorded in the README.
+  - Found while checking 429s: waybackpy does not raise on a 429. It parses the body as CDX text, so a 429 surfaces as a `WaybackError` about the property count, or as an empty result. The package cannot recognize either, so neither is retried; the README says so. Only an error that carries a response (none does from waybackpy today) gets the 429 retry.
+  - Decision 3 follow-up, not started: the `wayback[pandas]` optional extra for 1.0.
+  - Not done here: the 0.3.0 release (decision 6). With 001 unreleased too, both may ship as one minor release at close-out.
+  - Tests: 32 pass, coverage 96%, all with the CDX client faked and the pacer on a fake clock; a subprocess with pandas blocked imports the package and runs `get_url_records`. ruff and pyrefly clean.
