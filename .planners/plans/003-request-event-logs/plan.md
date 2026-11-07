@@ -1,8 +1,8 @@
 ---
 id: 3
 slug: request-event-logs
-status: draft
-branch:
+status: active
+branch: feature/003-request-event-logs
 created: 2026-11-06T21:22:25-08:00
 concluded:
 pr:
@@ -92,6 +92,14 @@ separate plan. This one supplies the data that plan will need.
 - Changing pacing or retry defaults.
 - Reading the log back to pace across processes. A caller can do it from
   the events; a helper can come later.
+
+## Log
+
+- **2026-11-06T21:31:04-08:00** — Activated.
+  - Branch: `feature/003-request-event-logs`
+  - Base: `dev` at `6ea78ff`
+  - Worktree: `.worktrees/003-request-event-logs`
+  - PR: pending
 
 ## Handoff
 
