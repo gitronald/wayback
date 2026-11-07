@@ -41,6 +41,8 @@ MIN_INTERVAL = 5.0
 MAX_RETRIES = 3
 # Base of the exponential backoff between retries, in seconds
 BACKOFF_SECONDS = 5.0
+# Longest wait a server's `Retry-After` can impose on one retry, in seconds
+MAX_RETRY_AFTER = 300.0
 # HTTP statuses retried when an error carries its response
 RETRY_STATUSES = frozenset({429, 503})
 
@@ -141,7 +143,10 @@ def _is_retryable(error: Exception) -> bool:
 
 
 def _retry_after(error: Exception) -> float | None:
-    """Seconds named by the `Retry-After` header of the error's response, if any."""
+    """
+    Seconds named by the `Retry-After` header of the error's response, if any,
+    kept between 0 and `MAX_RETRY_AFTER`.
+    """
     response = getattr(error, "response", None)
     if not isinstance(response, requests.Response):
         return None
@@ -151,15 +156,15 @@ def _retry_after(error: Exception) -> float | None:
     try:
         seconds = float(value)
     except ValueError:
-        pass
-    else:
-        # `nan` and `inf` parse as floats but name no wait
-        return max(seconds, 0.0) if math.isfinite(seconds) else None
-    try:
-        when = parsedate_to_datetime(value)
-    except (TypeError, ValueError):
+        try:
+            when = parsedate_to_datetime(value)
+        except (TypeError, ValueError):
+            return None
+        seconds = (when - datetime.now(when.tzinfo)).total_seconds()
+    # `nan` and `inf` parse as floats but name no wait
+    if not math.isfinite(seconds):
         return None
-    return max((when - datetime.now(when.tzinfo)).total_seconds(), 0.0)
+    return min(max(seconds, 0.0), MAX_RETRY_AFTER)
 
 
 def _backoff(attempt: int) -> float:
@@ -369,8 +374,8 @@ def get_url_snapshots(
 
 def get_url_list_snapshots(
     urls: list[str],
-    start_timestamp: str,
-    end_timestamp: str,
+    start_timestamp: str | None = None,
+    end_timestamp: str | None = None,
     output_directory: str | None = None,
     sleep_time: int = 5,
     verbose: bool = False,
@@ -388,8 +393,11 @@ def get_url_list_snapshots(
 
     Args:
         urls (list): List of URLs to process.
-        start_timestamp (str): Start timestamp for Wayback Machine search.
-        end_timestamp (str): End timestamp for Wayback Machine search.
+        start_timestamp (str | None): Start timestamp for the search. `None`
+            (the default) sets no lower bound.
+        end_timestamp (str | None): End timestamp for the search. `None` (the
+            default) means today, read once when the function is called, so
+            every URL in the run shares it.
         output_directory (str): Directory to save the output files.
         sleep_time (int): Number of seconds to sleep after each URL, on top of
             the `min_interval` kept between lookups.
@@ -405,6 +413,8 @@ def get_url_list_snapshots(
     A URL with no snapshots gets a header-only CSV.
     """
     assert output_directory is not None, "output_directory must be specified"
+    if end_timestamp is None:
+        end_timestamp = _today()
     if not os.path.exists(output_directory):
         os.makedirs(output_directory)
 

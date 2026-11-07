@@ -211,6 +211,20 @@ def test_start_timestamp_defaults_to_no_bound(fake_cdx) -> None:
     assert fake_cdx.calls[0]["start_timestamp"] is None
 
 
+def test_list_timestamps_default_and_share_one_day(
+    tmp_path, monkeypatch, fake_cdx
+) -> None:
+    days = iter(["20261106", "20261107"])
+    monkeypatch.setattr(wb, "_today", lambda: next(days))
+    wayback.get_url_list_snapshots(
+        ["example.com", "example.org"],
+        output_directory=str(tmp_path / "snapshots"),
+        sleep_time=0,
+    )
+    assert [c["start_timestamp"] for c in fake_cdx.calls] == [None, None]
+    assert [c["end_timestamp"] for c in fake_cdx.calls] == ["20261106", "20261106"]
+
+
 # Result shape
 
 
@@ -440,6 +454,13 @@ def test_exhausted_waybackpy_retries_are_retried(clock, flaky) -> None:
     flaky.errors = [requests.exceptions.RetryError("too many 503 error responses")]
     assert len(wayback.get_url_records("example.com", min_interval=0)) == 1
     assert len(flaky.calls) == 2
+
+
+@pytest.mark.parametrize("retry_after", ["86400", "Fri, 01 Jan 9999 00:00:00 GMT"])
+def test_long_retry_after_is_capped(clock, flaky, retry_after) -> None:
+    flaky.errors = [_http_error(429, retry_after=retry_after)]
+    wayback.get_url_records("example.com", min_interval=0)
+    assert clock.sleeps == [wb.MAX_RETRY_AFTER]
 
 
 @pytest.mark.parametrize("retry_after", ["soon", "nan", "inf", "1e999"])
