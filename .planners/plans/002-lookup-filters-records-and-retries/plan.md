@@ -1,11 +1,11 @@
 ---
 id: 2
 slug: lookup-filters-records-and-retries
-status: active
+status: done
 branch: feature/002-lookup-filters-records-and-retries
 created: 2026-11-06T20:34:25-08:00
-concluded:
-pr:
+concluded: 2026-11-06T20:54:02-08:00
+pr: https://github.com/gitronald/wayback/pull/15
 ---
 
 # Add status filters, record output, raw copies, and retries
@@ -124,3 +124,27 @@ if the waybackpy timeout question needs an upstream change.
   - Base: `dev` at `4a9bb08`
   - Worktree: `.worktrees/002-lookup-filters-records-and-retries`
   - PR: pending
+- **2026-11-06T20:44:08-08:00** — PR opened: https://github.com/gitronald/wayback/pull/15
+- **2026-11-06T20:44:50-08:00** — Implemented decisions 1, 2, 4, and 5, and decision 3's import move, stacked on plan 001's branch (merged in with `--no-ff`, since this plan builds on its signatures). PR 15 shows 001's commits until PR 14 merges.
+  - `get_url_records` returns `list[dict[str, str]]` with the fields in `RECORD_COLUMNS` (CDX fields, `archive_url`, `raw_url`). `get_url_snapshots` builds its frame from it and parses `datetime_timestamp` with pandas; `SNAPSHOT_COLUMNS` gains `raw_url` after `archive_url`.
+  - `filters`, `collapses`, and `status` on all three lookup functions; `status` appends `statuscode:<status>` to a copy of `filters`. The run log records the resolved filters.
+  - `raw_url(timestamp, original)` builds the `id_` form. Fetching stays the caller's; the README shows the pattern.
+  - Pacer: a module-level `_Pacer` (lock, injectable clock and sleep) keeps `min_interval` (default 5 s) between lookup attempts in a process. Pages inside one waybackpy lookup are not paced, since waybackpy offers no hook between them.
+  - Retries: up to `max_retries` (default 3) on `requests.ConnectionError` or the builtin one, on `requests.exceptions.RetryError` (waybackpy's urllib3 retries on 500/502/503/504 ran out), and on an error whose response is 429 or 503. Backoff 5 s * 2^n plus up to 5 s jitter, or `Retry-After` (seconds or HTTP date). Each retry is a warning on the `wayback` logger.
+  - Risk confirmed: waybackpy 3.0.6, its newest release on PyPI, calls `session.get` with no timeout and takes no timeout argument. Not patched; recorded in the README.
+  - Found while checking 429s: waybackpy does not raise on a 429. It parses the body as CDX text, so a 429 surfaces as a `WaybackError` about the property count, or as an empty result. The package cannot recognize either, so neither is retried; the README says so. Only an error that carries a response (none does from waybackpy today) gets the 429 retry.
+  - Decision 3 follow-up, not started: the `wayback[pandas]` optional extra for 1.0.
+  - Not done here: the 0.3.0 release (decision 6). With 001 unreleased too, both may ship as one minor release at close-out.
+  - Tests: 32 pass, coverage 96%, all with the CDX client faked and the pacer on a fake clock; a subprocess with pandas blocked imports the package and runs `get_url_records`. ruff and pyrefly clean.
+- **2026-11-06T20:44:52-08:00** — Implemented: 11 commits ahead of `dev`.
+- **2026-11-06T20:54:21-08:00** — Merged dev (plan 001's close and review fixes) into the branch, then ran the review gate on PR 15 (code-review, medium); review posted as a PR comment.
+  - Review follow-up: fixed in ccddb12. Retry-After values of nan, inf, or 1e999 reached the sleep (ValueError or an endless wait); non-finite values now fall back to backoff, with the unparseable-header test parametrized over them (fails without the fix). The retry tests' Flaky fake folded into FakeCDX as an errors queue. Conscious no-ops: skip-existing ignoring filters (pre-existing, documented), urllib3's parse_retry_after (raises where this parser falls back), the response-carrying retry branch (intended by decision 5), the record literal beside RECORD_COLUMNS (tests pin keys and order), min_interval=0 in retry tests (isolates backoff sleeps). 35 tests pass, coverage 96%, ruff, format, and pyrefly clean.
+  - Decision 6 (release): 001 and 002 ship together as one minor release through the release pipeline, run next.
+
+## Retrospective
+
+- Checking waybackpy before writing the retries changed what they could do. It has no timeout and never raises on a 429, so the 429/503 path waits on an error source that does not exist yet. That is written down rather than patched around.
+- Building `get_url_snapshots` on `get_url_records` made "the two cannot disagree" a test, not a promise, and gave the no-pandas import path for free.
+- An injectable clock and sleep on the pacer kept every pacing and backoff test exact and instant. The review's one real bug (a non-finite `Retry-After`) was in header parsing, at the edge that fakes do not reach by default. Parametrizing hostile header values is the habit to keep.
+- Stacking on plan 001's branch worked, but it cost two index-only merges as each plan's close-out landed on `dev`. Merging the parent before reviewing the child kept PR 15's diff to its own work.
+- Left open: the `wayback[pandas]` optional extra for 1.0 (decision 3).

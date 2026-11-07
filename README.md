@@ -86,12 +86,93 @@ wayback.get_url_snapshots("lazerlab.net", save_log=True, log_path="logs/wayback.
 ```
 
 
+### Filters and records
+
+`filters` and `collapses` go to the CDX API unchanged (`[!]field:regex`, and a field
+such as `digest`), and `status` is a shortcut for `statuscode:<status>`. All three are
+accepted by `get_url_records`, `get_url_snapshots`, and `get_url_list_snapshots`.
+
+`get_url_records` returns the snapshots as a list of dicts with string values (the
+fields in `wayback.RECORD_COLUMNS`), or `[]` when there are none. It does not need
+pandas. `get_url_snapshots` builds its DataFrame from the same records.
+
+```python
+import wayback
+
+records = wayback.get_url_records(
+    "https://example.com/news/article",
+    status=200,
+    collapses=["digest"],  # one row per distinct capture
+)
+earliest = records[0] if records else None
+```
+
+
+### Fetching an archived copy
+
+Each record carries `archive_url`, the page as the Wayback Machine shows it (with its
+toolbar and rewritten links), and `raw_url`, the page as captured:
+`https://web.archive.org/web/<timestamp>id_/<original>`. `wayback.raw_url(timestamp,
+original)` builds the same URL.
+
+The package does not fetch pages. A fetch is a policy each caller sets (redirects, size
+limits, which hosts to allow), so do it yourself, with a timeout, and keep it on the
+same pacing as the lookups:
+
+```python
+import time
+
+import requests
+
+for record in records[:1]:
+    time.sleep(5)  # stay on the same pacing as the lookups
+    response = requests.get(
+        record["raw_url"],
+        headers={"User-Agent": wayback.wayback.DEFAULT_UA},
+        timeout=30,
+    )
+    response.raise_for_status()
+    html = response.text
+```
+
+
+### Rate limits and retries
+
+web.archive.org throttles clients mainly by refusing connections
+(`ConnectionError`, errno 111), not with 429 responses. One run of lookups and
+snapshot fetches at one request every 5 seconds had requests refused for 20 of its
+first 94 URLs, spread through the run (2026-11-06). The package therefore:
+
+- **Paces lookups.** It keeps `min_interval` seconds (default 5) between any two
+  lookups it starts in a process, through any of its functions, single lookups
+  included. `get_url_list_snapshots` also sleeps `sleep_time` seconds after each URL.
+  The CDX API may page a large result, and pages within one lookup are not paced.
+- **Retries refusals.** A lookup that fails with a connection error, or after
+  waybackpy's own retries on a 500, 502, 503, or 504 run out, is retried up to
+  `max_retries` times (default 3). Each retry waits for an exponential backoff with
+  jitter (5 s, 10 s, 20 s, plus up to 5 s), or for the `Retry-After` an error response
+  names, and is logged as a warning on the `wayback` logger.
+
+Two limits come from waybackpy 3.0.6, which makes the HTTP requests:
+
+- **No timeout.** waybackpy sends its requests with no timeout and takes no argument
+  for one, so a connection that stalls can block a lookup indefinitely. Run long
+  batches where a stuck process can be noticed and restarted.
+  `get_url_list_snapshots` skips URLs it has already saved, so a restart repeats no
+  work.
+- **429 responses are not errors.** waybackpy returns the body of a 429 as if it were
+  CDX data, so a throttled lookup can raise a `WaybackError` about the number of
+  snapshot properties, or come back empty. The package cannot tell either case from a
+  real one, so it does not retry them. If lookups start failing this way, slow down
+  (raise `min_interval`).
+
+
 ## Dependencies
 
 `waybackpy`: For interacting with the Wayback Machine API.  
 `requests`: For making HTTP requests.  
 `hashlib`: For generating hash values from URLs.  
-`pandas`: For data manipulation and analysis.  
+`pandas`: For the DataFrame functions (`get_url_snapshots`, `get_url_list_snapshots`); `get_url_records` and `raw_url` import without it.  
 `tqdm`: For providing progress bars during data collection.  
 
 

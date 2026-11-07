@@ -11,6 +11,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `log_path` argument on `get_url_snapshots` and `get_url_list_snapshots`, naming
   where `save_log=True` writes the run log
+- `filters`, `collapses`, and `status` arguments on `get_url_snapshots` and
+  `get_url_list_snapshots`, passed to the CDX API (`status=200` adds
+  `statuscode:200`)
+- `get_url_records`: the snapshots as a list of dicts with string values, `[]` when
+  there are none, importable without pandas. `get_url_snapshots` is built on it
+- `raw_url(timestamp, original)`, the URL of an archived page's raw `id_` copy, and a
+  `raw_url` field on every record and DataFrame row
+- Pacing: at least `min_interval` seconds (default 5) between any two lookups in a
+  process, single lookups included
+- Retries: a lookup refused with a connection error, or failing after waybackpy's own
+  retries on 5xx responses, is retried up to `max_retries` times (default 3) with
+  exponential backoff and jitter, honoring `Retry-After`
+- README sections on fetching archived copies and on the Wayback Machine's rate
+  limits, including waybackpy's lack of a request timeout
 
 ### Changed
 
@@ -25,6 +39,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   row of NaNs, and `get_url_list_snapshots` writes a header-only CSV for it
 - The default User-Agent is `wayback/<version>`, replacing a Firefox 40 browser
   string
+- pandas is imported only by the DataFrame functions, not when the package is
+  imported
+- `datetime_timestamp` is parsed by pandas from `timestamp`, so the column is a
+  pandas datetime column whether or not the result is empty
 
 ## [0.1.2] - 2026-11-06
 
