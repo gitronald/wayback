@@ -1,8 +1,8 @@
 ---
 id: 1
 slug: safe-lookup-defaults
-status: draft
-branch:
+status: active
+branch: feature/001-safe-lookup-defaults
 created: 2026-11-06T20:34:24-08:00
 concluded:
 pr:
@@ -92,3 +92,11 @@ and the changelog. One PR.
 - New lookup features (filters, a records API, archived-copy fetching,
   retries): plan 002.
 - Dropping pandas: plan 002 decides it.
+
+## Log
+
+- **2026-11-06T20:39:16-08:00** — Activated.
+  - Branch: `feature/001-safe-lookup-defaults`
+  - Base: `dev` at `2ceb7c3`
+  - Worktree: `.worktrees/001-safe-lookup-defaults`
+  - PR: pending
