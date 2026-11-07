@@ -106,15 +106,8 @@ def test_save_log_without_path_writes_log_path_default(
     assert entry["n_snapshots"] == 0
 
 
-def test_save_log_records_errors(tmp_path, monkeypatch) -> None:
-    class Refused:
-        def __init__(self, **kwargs: object) -> None:
-            pass
-
-        def snapshots(self) -> Iterator[CDXSnapshot]:
-            raise ConnectionError("refused")
-
-    monkeypatch.setattr(wb, "WaybackMachineCDXServerAPI", Refused)
+def test_save_log_records_errors(tmp_path, fake_cdx) -> None:
+    fake_cdx.refuse = {"example.com"}
     log_path = tmp_path / "runs.jsonl"
     with pytest.raises(ConnectionError):
         wayback.get_url_snapshots(
@@ -179,9 +172,8 @@ def test_end_timestamp_resolves_at_call_time(monkeypatch, fake_cdx) -> None:
 
 
 def test_start_timestamp_defaults_to_no_bound(fake_cdx) -> None:
-    df = wayback.get_url_snapshots("example.com", verbose=False)
+    wayback.get_url_snapshots("example.com", verbose=False)
     assert fake_cdx.calls[0]["start_timestamp"] is None
-    assert list(df.columns) == wb.SNAPSHOT_COLUMNS
 
 
 # Result shape
