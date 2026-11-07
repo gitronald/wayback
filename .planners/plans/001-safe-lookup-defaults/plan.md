@@ -5,7 +5,7 @@ status: active
 branch: feature/001-safe-lookup-defaults
 created: 2026-11-06T20:34:24-08:00
 concluded:
-pr:
+pr: https://github.com/gitronald/wayback/pull/14
 ---
 
 # Make lookup defaults safe and empty results empty
@@ -100,3 +100,4 @@ and the changelog. One PR.
   - Base: `dev` at `2ceb7c3`
   - Worktree: `.worktrees/001-safe-lookup-defaults`
   - PR: pending
+- **2026-11-06T20:40:52-08:00** — PR opened: https://github.com/gitronald/wayback/pull/14
