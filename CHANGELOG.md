@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-06
+
 ### Added
 
 - `log_path` argument on `get_url_snapshots` and `get_url_list_snapshots`, naming
@@ -81,7 +83,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PyPI publish workflow, disabled behind the `PUBLISH_ENABLED` repository variable
 - Dependabot with grouped weekly updates
 
-[Unreleased]: https://github.com/gitronald/wayback/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/gitronald/wayback/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/gitronald/wayback/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/gitronald/wayback/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/gitronald/wayback/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/gitronald/wayback/releases/tag/v0.1.0
