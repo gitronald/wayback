@@ -1,10 +1,10 @@
 ---
 id: 2
 slug: lookup-filters-records-and-retries
-status: implemented
+status: done
 branch: feature/002-lookup-filters-records-and-retries
 created: 2026-11-06T20:34:25-08:00
-concluded:
+concluded: 2026-11-06T20:54:02-08:00
 pr: https://github.com/gitronald/wayback/pull/15
 ---
 
@@ -140,3 +140,11 @@ if the waybackpy timeout question needs an upstream change.
 - **2026-11-06T20:54:21-08:00** — Merged dev (plan 001's close and review fixes) into the branch, then ran the review gate on PR 15 (code-review, medium); review posted as a PR comment.
   - Review follow-up: fixed in ccddb12. Retry-After values of nan, inf, or 1e999 reached the sleep (ValueError or an endless wait); non-finite values now fall back to backoff, with the unparseable-header test parametrized over them (fails without the fix). The retry tests' Flaky fake folded into FakeCDX as an errors queue. Conscious no-ops: skip-existing ignoring filters (pre-existing, documented), urllib3's parse_retry_after (raises where this parser falls back), the response-carrying retry branch (intended by decision 5), the record literal beside RECORD_COLUMNS (tests pin keys and order), min_interval=0 in retry tests (isolates backoff sleeps). 35 tests pass, coverage 96%, ruff, format, and pyrefly clean.
   - Decision 6 (release): 001 and 002 ship together as one minor release through the release pipeline, run next.
+
+## Retrospective
+
+- Checking waybackpy before writing the retries changed what they could do. It has no timeout and never raises on a 429, so the 429/503 path waits on an error source that does not exist yet. That is written down rather than patched around.
+- Building `get_url_snapshots` on `get_url_records` made "the two cannot disagree" a test, not a promise, and gave the no-pandas import path for free.
+- An injectable clock and sleep on the pacer kept every pacing and backoff test exact and instant. The review's one real bug (a non-finite `Retry-After`) was in header parsing, at the edge that fakes do not reach by default. Parametrizing hostile header values is the habit to keep.
+- Stacking on plan 001's branch worked, but it cost two index-only merges as each plan's close-out landed on `dev`. Merging the parent before reviewing the child kept PR 15's diff to its own work.
+- Left open: the `wayback[pandas]` optional extra for 1.0 (decision 3).
