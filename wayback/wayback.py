@@ -19,7 +19,7 @@ import tqdm
 from waybackpy import WaybackMachineCDXServerAPI
 
 if TYPE_CHECKING:
-    import pandas as pd
+    import polars as pl
 
 logger = logging.getLogger("wayback")
 
@@ -180,7 +180,7 @@ def get_url_records(
 ) -> list[dict[str, str]]:
     """
     Get Wayback Machine snapshots for a URL as a list of records. Needs no
-    pandas.
+    polars.
 
     Args:
         url (str): URL to search.
@@ -272,7 +272,7 @@ def get_url_snapshots(
     status: int | None = None,
     min_interval: float = MIN_INTERVAL,
     max_retries: int = MAX_RETRIES,
-) -> pd.DataFrame:
+) -> pl.DataFrame:
     """
     Get Wayback Machine snapshots for a given URL as a DataFrame, built on
     `get_url_records`.
@@ -295,11 +295,11 @@ def get_url_snapshots(
             `get_url_records`.
 
     Returns:
-        pd.DataFrame: One row per snapshot, with the columns in
+        pl.DataFrame: One row per snapshot, with the columns in
             `SNAPSHOT_COLUMNS`. No snapshots gives zero rows with the same
             columns.
     """
-    import pandas as pd
+    import polars as pl
 
     if end_timestamp is None:
         end_timestamp = _today()
@@ -333,14 +333,17 @@ def get_url_snapshots(
 
         if verbose:
             print("reshaping items")
-        df = pd.DataFrame(records, columns=RECORD_COLUMNS)
-        df["datetime_timestamp"] = pd.to_datetime(
-            df["timestamp"], format="%Y%m%d%H%M%S"
+        df = pl.DataFrame(
+            records, schema=dict.fromkeys(RECORD_COLUMNS, pl.String)
+        ).with_columns(
+            pl.col("timestamp")
+            .str.strptime(pl.Datetime, "%Y%m%d%H%M%S")
+            .alias("datetime_timestamp"),
+            pl.lit(datetime.now()).alias("retrieved_on"),
+            pl.lit(f"{start_timestamp or ''}-{end_timestamp}").alias("retrieved_dates"),
+            pl.lit(url).alias("url"),
         )
-        df["retrieved_on"] = pd.Timestamp.now()
-        df["retrieved_dates"] = f"{start_timestamp or ''}-{end_timestamp}"
-        df["url"] = url
-        df = df[SNAPSHOT_COLUMNS]
+        df = df.select(SNAPSHOT_COLUMNS)
     except Exception as e:
         if save_log:
             duration = (datetime.now().astimezone() - started_at).total_seconds()
@@ -435,7 +438,7 @@ def get_url_list_snapshots(
                 min_interval=min_interval,
                 max_retries=max_retries,
             )
-            df.to_csv(output_path, index=False)
+            df.write_csv(output_path)
             if verbose:
                 print(f"saved to: {output_path}")
             results.append(

@@ -9,8 +9,8 @@ requires-python = ">=3.11"
 dependencies = [
     "waybackpy",
     "requests",
-    "pandas",
     "tqdm",
+    "polars>=2.1.0",
 ]
 readme = "README.md"
 

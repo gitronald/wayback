@@ -9,6 +9,7 @@ import textwrap
 from collections.abc import Iterator
 from pathlib import Path
 
+import polars as pl
 import pytest
 import requests
 from waybackpy.cdx_snapshot import CDXSnapshot
@@ -218,14 +219,16 @@ def test_snapshot_columns(fake_cdx) -> None:
     df = wayback.get_url_snapshots("example.com", "20200101", "20201231", verbose=False)
     assert list(df.columns) == wb.SNAPSHOT_COLUMNS
     assert len(df) == 2
-    assert df["url"].tolist() == ["example.com", "example.com"]
-    assert df["retrieved_dates"].iloc[0] == "20200101-20201231"
+    assert df["url"].to_list() == ["example.com", "example.com"]
+    assert df["retrieved_dates"][0] == "20200101-20201231"
 
 
 def test_empty_result_has_no_rows(fake_cdx) -> None:
     df = wayback.get_url_snapshots("example.com", verbose=False)
     assert len(df) == 0
     assert list(df.columns) == wb.SNAPSHOT_COLUMNS
+    assert df.schema["datetime_timestamp"] == pl.Datetime
+    assert df.schema["retrieved_on"] == pl.Datetime
 
 
 def test_batch_writes_header_only_csv_for_empty(tmp_path, fake_cdx) -> None:
@@ -331,15 +334,15 @@ def test_snapshots_match_records(fake_cdx) -> None:
     fake_cdx.rows = [_snapshot("20200101000000"), _snapshot("20200102000000")]
     records = wayback.get_url_records("example.com")
     df = wayback.get_url_snapshots("example.com", verbose=False)
-    assert df[wb.RECORD_COLUMNS].to_dict(orient="records") == records
-    assert str(df["datetime_timestamp"].iloc[1]) == "2020-01-02 00:00:00"
+    assert df.select(wb.RECORD_COLUMNS).to_dicts() == records
+    assert str(df["datetime_timestamp"][1]) == "2020-01-02 00:00:00"
 
 
-def test_records_import_without_pandas() -> None:
+def test_records_import_without_polars() -> None:
     script = textwrap.dedent(
         """
         import sys
-        sys.modules["pandas"] = None  # any import of pandas now fails
+        sys.modules["polars"] = None  # any import of polars now fails
 
         import wayback
         from wayback import wayback as wb
