@@ -63,6 +63,7 @@ def _skip_url(output_directory: Path, url: str) -> None:
 def test_public_api() -> None:
     assert callable(wayback.get_url_snapshots)
     assert callable(wayback.get_url_list_snapshots)
+    assert wayback.SNAPSHOT_COLUMNS == wb.SNAPSHOT_COLUMNS
 
 
 # Run log
