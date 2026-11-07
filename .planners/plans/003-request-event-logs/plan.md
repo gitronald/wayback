@@ -1,7 +1,7 @@
 ---
 id: 3
 slug: request-event-logs
-status: active
+status: implemented
 branch: feature/003-request-event-logs
 created: 2026-11-06T21:22:25-08:00
 concluded:
@@ -109,6 +109,7 @@ separate plan. This one supplies the data that plan will need.
     - `save_log=True` raises a `DeprecationWarning` and still logs, to `log_path` or `LOG_PATH`.
     - Tests: 49 pass (11 new event tests, the four run-log tests rewritten for the event stream). ruff and pyrefly are clean (one pre-existing `tqdm` stub warning). Ran on the code committed as `e0b5fa5` (the docs commit after it touches no code), with `dev` not moved since activation, so no base merge was needed.
     - README section "Logging requests" with an example line per event shape and the gaps (waybackpy's internal retries, 429-as-data); CHANGELOG `[Unreleased]` entries under Added, Changed, and Deprecated.
+- **2026-11-06T21:35:44-08:00** — Implemented: 4 commits ahead of `dev`.
 
 ## Handoff
 
