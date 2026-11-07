@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   process, single lookups included
 - Retries: a lookup refused with a connection error, or failing after waybackpy's own
   retries on 5xx responses, is retried up to `max_retries` times (default 3) with
-  exponential backoff and jitter, honoring `Retry-After`
+  exponential backoff and jitter, honoring `Retry-After` up to 300 seconds
 - README sections on fetching archived copies and on the Wayback Machine's rate
   limits, including waybackpy's lack of a request timeout
 
@@ -37,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   1996-1999 captures, which the old `"20000101"` default dropped
 - `end_timestamp` defaults to `None`, meaning today at the time of the call, not the
   date the module was imported
+- `get_url_list_snapshots` takes the same timestamp defaults, so `start_timestamp`
+  and `end_timestamp` are optional there too
 - An empty result is a DataFrame with zero rows and the usual columns, not a single
   row of NaNs, and `get_url_list_snapshots` writes a header-only CSV for it
 - The default User-Agent is `wayback/<version>`, replacing a Firefox 40 browser

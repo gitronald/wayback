@@ -81,7 +81,8 @@ A URL with no snapshots gets a header-only CSV.
 
 ### Defaults
 
-- **Date range**: `get_url_snapshots` searches from the first capture to today.
+- **Date range**: `get_url_snapshots` and `get_url_list_snapshots` search from the
+  first capture to today.
   `start_timestamp=None` (the default) sets no lower bound, and
   `end_timestamp=None` means the date of the call. Pass `YYYYMMDD` strings to narrow
   it.
@@ -163,7 +164,7 @@ first 94 URLs, spread through the run (2026-11-06). The package therefore:
   waybackpy's own retries on a 500, 502, 503, or 504 run out, is retried up to
   `max_retries` times (default 3). Each retry waits for an exponential backoff with
   jitter (5 s, 10 s, 20 s, plus up to 5 s), or for the `Retry-After` an error response
-  names, and is logged as a warning on the `wayback` logger.
+  names, up to 300 s, and is logged as a warning on the `wayback` logger.
 
 Two limits come from waybackpy 3.0.6, which makes the HTTP requests:
 
