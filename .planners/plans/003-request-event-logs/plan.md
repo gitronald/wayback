@@ -1,11 +1,11 @@
 ---
 id: 3
 slug: request-event-logs
-status: active
+status: done
 branch: feature/003-request-event-logs
 created: 2026-11-06T21:22:25-08:00
-concluded:
-pr:
+concluded: 2026-11-06T21:39:42-08:00
+pr: https://github.com/gitronald/wayback/pull/17
 ---
 
 # Log every lookup and request as structured events
@@ -100,10 +100,32 @@ separate plan. This one supplies the data that plan will need.
   - Base: `dev` at `6ea78ff`
   - Worktree: `.worktrees/003-request-event-logs`
   - PR: pending
+- **2026-11-06T21:34:43-08:00** — PR opened: https://github.com/gitronald/wayback/pull/17
+- **2026-11-06T21:35:29-08:00** — Implemented the event log, with the three questions answered (deprecate `save_log`, no environment variable, caller-supplied `run_id`).
+    - `get_url_records`, `get_url_snapshots`, and `get_url_list_snapshots` take `on_event`, `log_path`, and `run_id`. `log_path` alone turns the log on. `JsonlEventLog(path, run_id=None)` is exported.
+    - Events: `request` per attempt, `retry` per retry (emitted beside the logger warning, from one place), `lookup` per call (every v0.2.0 run-log field, plus `attempts` and `total_waited_s`), and one addition to the draft: a `batch` event closing each `get_url_list_snapshots` run, which carries that function's old run record. Each URL in a batch now logs its own lookup events too.
+    - `error` plus `error_type` (the exception class) on failed events, in place of the draft's single type-and-message field, so the lookup's `error` stays the string the old run log held.
+    - `_Pacer.wait` returns the seconds it slept, reported as `waited_s`. `total_waited_s` is the pacer's waits plus the retry delays.
+    - `save_log=True` raises a `DeprecationWarning` and still logs, to `log_path` or `LOG_PATH`.
+    - Tests: 49 pass (11 new event tests, the four run-log tests rewritten for the event stream). ruff and pyrefly are clean (one pre-existing `tqdm` stub warning). Ran on the code committed as `e0b5fa5` (the docs commit after it touches no code), with `dev` not moved since activation, so no base merge was needed.
+    - README section "Logging requests" with an example line per event shape and the gaps (waybackpy's internal retries, 429-as-data); CHANGELOG `[Unreleased]` entries under Added, Changed, and Deprecated.
+- **2026-11-06T21:35:44-08:00** — Implemented: 4 commits ahead of `dev`.
+- **2026-11-06T21:40:03-08:00** — Review gate run (medium, `/code-review`: correctness and simplification finders, one verifier) and its fixes committed as `harden event handlers and log writes after review`.
+    - Review follow-up: 10 candidates, 5 kept. Actioned, each with a test: an empty `log_path` now counts as none (it raised on `open('')`); a handler that raises is not called again for the `lookup` event, and the lookup's own error stays as the exception's context; each handler gets a deep copy of the event, so editing it cannot change the next attempt's filters or the caller's `collapses`; one module-level lock serializes every `JsonlEventLog` write; the batch event takes its parameters from `_params`. Four of the five tests fail on the pre-fix code; the lock and batch tests are regression guards (the interleave was not reproduced, and the batch values already matched).
+    - Conscious no-ops: per-event `makedirs` and open (negligible beside a paced request, and each event is on disk as written); the `_Params` TypedDict (pyrefly needs the types); `JsonlEventLog(run_id=...)` (for callers sharing one writer through `on_event`); the closure and context-manager structure.
+    - Checks at `f31f71a`: ruff check, ruff format --check, pyrefly (the pre-existing `tqdm` stub warning only), pytest 55 passed. Review posted to the PR.
 
 ## Handoff
 
-**State:** draft, not started.
+**State:** done. Implemented, reviewed, and merged through the PR; ships
+in the next release (the CHANGELOG's `[Unreleased]` holds it).
+
+**Not verified:** the events against the live CDX API. Every test uses the
+fake client and clock; the first real run is the downstream caller's.
+
+**Handed on:** removing `save_log` (question 1) to a later minor release,
+not yet planned. Pacing, 429 detection, and block handling to the separate
+rate-limit plan named under *Relation to other work*, not yet opened.
 
 **Questions:**
 
@@ -122,3 +144,15 @@ separate plan. This one supplies the data that plan will need.
    **Answered 2026-11-06: caller-supplied.** Lookups and `JsonlEventLog`
    take an optional `run_id`, stamped on every event when given and left
    off when not. The package makes none.
+
+## Retrospective
+
+- The plan's three event shapes held. The one addition was a `batch` event,
+  needed so `get_url_list_snapshots` keeps the record its old run log wrote.
+- Keeping the `lookup` event a superset of the old run-log record made the
+  format change cheap to explain: old readers filter on `event == "lookup"`.
+- The review earned its keep on handler behavior, which the draft never
+  specified: what a raising handler does, and whether a handler can change
+  the lookup's state. Specify both up front the next time a callback is added.
+- One Log entry named a commit that did not exist; it was caught and fixed
+  before the push. Read a sha from `git log` before writing it down.

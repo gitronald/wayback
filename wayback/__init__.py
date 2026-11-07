@@ -1,6 +1,7 @@
 from .wayback import (
     RECORD_COLUMNS,
     SNAPSHOT_COLUMNS,
+    JsonlEventLog,
     get_url_list_snapshots,
     get_url_records,
     get_url_snapshots,
@@ -10,6 +11,7 @@ from .wayback import (
 __all__ = [
     "RECORD_COLUMNS",
     "SNAPSHOT_COLUMNS",
+    "JsonlEventLog",
     "get_url_list_snapshots",
     "get_url_records",
     "get_url_snapshots",

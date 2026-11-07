@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Request events: every lookup function takes `on_event=` (a callable given each
+  event), `log_path=` (append the events to a JSON Lines file), and `run_id=` (an id
+  stamped on every event). Events are `request` (one per attempt, with the pacer's
+  wait, duration, outcome, and error), `retry` (delay, `Retry-After`, error), `lookup`
+  (one per call, a superset of the old run log record, plus `attempts` and
+  `total_waited_s`), and `batch` (one per `get_url_list_snapshots` run)
+- `get_url_records` can now log, through the same arguments
+- `JsonlEventLog(path, run_id=None)`, the JSON Lines writer behind `log_path`
+- README section "Logging requests"
+
+### Changed
+
+- `log_path` alone turns the log on; it no longer needs `save_log=True`
+- The run log is a stream of events, not one record per call: read the `lookup` lines
+  (and `batch` for `get_url_list_snapshots`) for the records the old log held
+
+### Deprecated
+
+- `save_log`: pass `log_path=` (or `on_event=`) instead. `save_log=True` still logs, to
+  `log_path` or `data/wayback-runs.jsonl`, and raises a `DeprecationWarning`
+
 ## [0.2.0] - 2026-11-06
 
 ### Added
