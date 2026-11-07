@@ -140,6 +140,11 @@ if the waybackpy timeout question needs an upstream change.
 - **2026-11-06T20:54:21-08:00** — Merged dev (plan 001's close and review fixes) into the branch, then ran the review gate on PR 15 (code-review, medium); review posted as a PR comment.
   - Review follow-up: fixed in ccddb12. Retry-After values of nan, inf, or 1e999 reached the sleep (ValueError or an endless wait); non-finite values now fall back to backoff, with the unparseable-header test parametrized over them (fails without the fix). The retry tests' Flaky fake folded into FakeCDX as an errors queue. Conscious no-ops: skip-existing ignoring filters (pre-existing, documented), urllib3's parse_retry_after (raises where this parser falls back), the response-carrying retry branch (intended by decision 5), the record literal beside RECORD_COLUMNS (tests pin keys and order), min_interval=0 in retry tests (isolates backoff sleeps). 35 tests pass, coverage 96%, ruff, format, and pyrefly clean.
   - Decision 6 (release): 001 and 002 ship together as one minor release through the release pipeline, run next.
+- **2026-11-06T21:06:50-08:00** — After close, on dev with no plan of its own: polars replaced pandas outright (73390d6, 1342037), superseding decision 3's `wayback[pandas]` extra for 1.0, which is no longer needed.
+  - `get_url_snapshots` returns a `polars.DataFrame`; polars is imported only inside the DataFrame functions, so `get_url_records` and `raw_url` still import without it (the subprocess test now blocks polars).
+  - pandas, numpy, python-dateutil, and six left the lock; polars 2.1.0 is the dependency.
+  - CSVs from `get_url_list_snapshots` write `datetime_timestamp` and `retrieved_on` as ISO 8601, not pandas' space-separated form. The changelog's `[Unreleased]` names the breaking change and the CSV format.
+  - 35 tests pass, coverage 96%; ruff, format, and pyrefly clean; CI green on Python 3.11 to 3.14.
 
 ## Retrospective
 
