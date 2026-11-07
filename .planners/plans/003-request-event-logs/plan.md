@@ -101,6 +101,14 @@ separate plan. This one supplies the data that plan will need.
   - Worktree: `.worktrees/003-request-event-logs`
   - PR: pending
 - **2026-11-06T21:34:43-08:00** — PR opened: https://github.com/gitronald/wayback/pull/17
+- **2026-11-06T21:35:29-08:00** — Implemented the event log, with the three questions answered (deprecate `save_log`, no environment variable, caller-supplied `run_id`).
+    - `get_url_records`, `get_url_snapshots`, and `get_url_list_snapshots` take `on_event`, `log_path`, and `run_id`. `log_path` alone turns the log on. `JsonlEventLog(path, run_id=None)` is exported.
+    - Events: `request` per attempt, `retry` per retry (emitted beside the logger warning, from one place), `lookup` per call (every v0.2.0 run-log field, plus `attempts` and `total_waited_s`), and one addition to the draft: a `batch` event closing each `get_url_list_snapshots` run, which carries that function's old run record. Each URL in a batch now logs its own lookup events too.
+    - `error` plus `error_type` (the exception class) on failed events, in place of the draft's single type-and-message field, so the lookup's `error` stays the string the old run log held.
+    - `_Pacer.wait` returns the seconds it slept, reported as `waited_s`. `total_waited_s` is the pacer's waits plus the retry delays.
+    - `save_log=True` raises a `DeprecationWarning` and still logs, to `log_path` or `LOG_PATH`.
+    - Tests: 49 pass (11 new event tests, the four run-log tests rewritten for the event stream). ruff and pyrefly are clean (one pre-existing `tqdm` stub warning). Ran on the code committed as `e0b5fa5` (the docs commit after it touches no code), with `dev` not moved since activation, so no base merge was needed.
+    - README section "Logging requests" with an example line per event shape and the gaps (waybackpy's internal retries, 429-as-data); CHANGELOG `[Unreleased]` entries under Added, Changed, and Deprecated.
 
 ## Handoff
 
