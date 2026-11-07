@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-06
+
+### Added
+
+- `log_path` argument on `get_url_snapshots` and `get_url_list_snapshots`, naming
+  where `save_log=True` writes the run log
+- `filters`, `collapses`, and `status` arguments on `get_url_snapshots` and
+  `get_url_list_snapshots`, passed to the CDX API (`status=200` adds
+  `statuscode:200`)
+- `get_url_records`: the snapshots as a list of dicts with string values, `[]` when
+  there are none, importable without polars. `get_url_snapshots` is built on it
+- `raw_url(timestamp, original)`, the URL of an archived page's raw `id_` copy, and a
+  `raw_url` field on every record and DataFrame row
+- Pacing: at least `min_interval` seconds (default 5) between any two lookups in a
+  process, single lookups included
+- Retries: a lookup refused with a connection error, or failing after waybackpy's own
+  retries on 5xx responses, is retried up to `max_retries` times (default 3) with
+  exponential backoff and jitter, honoring `Retry-After` up to 300 seconds
+- README sections on fetching archived copies and on the Wayback Machine's rate
+  limits, including waybackpy's lack of a request timeout
+
+### Changed
+
+- The run log is off by default: `save_log` now defaults to `False`, so a call no
+  longer creates `data/wayback-runs.jsonl` in the working directory. Pass
+  `save_log=True` (and optionally `log_path`) to keep writing it
+- `start_timestamp` defaults to `None`, so a lookup has no lower bound and includes
+  1996-1999 captures, which the old `"20000101"` default dropped
+- `end_timestamp` defaults to `None`, meaning today at the time of the call, not the
+  date the module was imported
+- `get_url_list_snapshots` takes the same timestamp defaults, so `start_timestamp`
+  and `end_timestamp` are optional there too
+- An empty result is a DataFrame with zero rows and the usual columns, not a single
+  row of NaNs, and `get_url_list_snapshots` writes a header-only CSV for it
+- The default User-Agent is `wayback/<version>`, replacing a Firefox 40 browser
+  string
+- polars replaces pandas: `get_url_snapshots` returns a `polars.DataFrame`, and
+  pandas is no longer a dependency. Code that used pandas methods on the result
+  (`.iloc`, `.to_dict`, `.to_csv`) needs the polars equivalents, or
+  `.to_pandas()` with pandas and pyarrow installed
+- polars is imported only by the DataFrame functions, not when the package is
+  imported
+- `datetime_timestamp` is parsed from `timestamp`, so the column is a datetime
+  column whether or not the result is empty
+- `get_url_list_snapshots` writes its CSVs with polars, so `datetime_timestamp` and
+  `retrieved_on` are ISO 8601 (`2020-01-01T00:00:00.000000`), not pandas'
+  `2020-01-01 00:00:00`
+
 ## [0.1.2] - 2026-11-06
 
 ### Changed
@@ -37,7 +85,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PyPI publish workflow, disabled behind the `PUBLISH_ENABLED` repository variable
 - Dependabot with grouped weekly updates
 
-[Unreleased]: https://github.com/gitronald/wayback/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/gitronald/wayback/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/gitronald/wayback/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/gitronald/wayback/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/gitronald/wayback/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/gitronald/wayback/releases/tag/v0.1.0

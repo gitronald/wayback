@@ -1,6 +1,6 @@
 [project]
 name = "wayback"
-version = "0.1.2"
+version = "0.2.0"
 description = "A wrapper for collecting data from the Wayback Machine"
 authors = [
     {name = "Ronald E. Robertson", email = "rer@acm.org"}
@@ -9,8 +9,8 @@ requires-python = ">=3.11"
 dependencies = [
     "waybackpy",
     "requests",
-    "pandas",
     "tqdm",
+    "polars>=2.1.0",
 ]
 readme = "README.md"
 
