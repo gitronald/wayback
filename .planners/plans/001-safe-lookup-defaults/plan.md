@@ -1,7 +1,7 @@
 ---
 id: 1
 slug: safe-lookup-defaults
-status: active
+status: implemented
 branch: feature/001-safe-lookup-defaults
 created: 2026-11-06T20:34:24-08:00
 concluded:
@@ -109,3 +109,4 @@ and the changelog. One PR.
   - Tests fake `WaybackMachineCDXServerAPI`; 14 pass, coverage 93%. ruff and pyrefly clean at the docs commit.
   - README gains a Defaults section; the changelog's `[Unreleased]` names each change under Added/Changed.
   - Not done here: the 0.2.0 release (decision 6). The release is left for close-out, since plan 002 stacks on this branch and may share the release.
+- **2026-11-06T20:41:25-08:00** — Implemented: 4 commits ahead of `dev`.
