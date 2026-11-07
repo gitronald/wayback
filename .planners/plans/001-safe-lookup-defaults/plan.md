@@ -1,10 +1,10 @@
 ---
 id: 1
 slug: safe-lookup-defaults
-status: implemented
+status: done
 branch: feature/001-safe-lookup-defaults
 created: 2026-11-06T20:34:24-08:00
-concluded:
+concluded: 2026-11-06T20:49:01-08:00
 pr: https://github.com/gitronald/wayback/pull/14
 ---
 
@@ -113,3 +113,10 @@ and the changelog. One PR.
 - **2026-11-06T20:49:17-08:00** — Review gate run on PR 14 (code-review, medium); review posted as a PR comment.
   - Review follow-up: correctness finder raised nothing. Two test-only findings fixed in 3b3bef7: the error-log test now uses the fake CDX fixture's refuse set instead of its own stub, and the start-timestamp test no longer repeats the empty-frame column check. Rejected as pre-existing: the localtime() argument in _today(). No new regression tests, since both fixes are to tests; 14 pass, ruff, format, and pyrefly clean.
   - Decision 6 (release) moves to the release pipeline run after plan 002 closes, so 001 and 002 ship in one minor release.
+
+## Retrospective
+
+- All five findings were fixed as the decisions specified; none needed a second pass. Decision 6 (the release) is the one piece that moved, so it can ship with plan 002 in one minor version.
+- Building the empty frame from `pd.DataFrame(items, columns=CDX_COLUMNS)` removed both the NaN placeholder row and `_count_snapshots`. Fixing the frame's shape at the source made the downstream cleanup helper unnecessary.
+- A fake CDX client with `calls`, `rows`, and `refuse` covered every test without network access. Review found the one test that bypassed it, which is a reason to route every new test through the fixture.
+- Stacking 002 on this branch with a `--no-ff` merge kept both plans moving. The cost is that 002 has to take in this branch's review fixes before it closes.
