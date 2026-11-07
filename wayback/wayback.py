@@ -3,54 +3,88 @@ import json
 import os
 import time
 from datetime import datetime
+from importlib.metadata import PackageNotFoundError, version
 
 import pandas as pd
 import tqdm
 from waybackpy import WaybackMachineCDXServerAPI
 
-DEFAULT_UA = "Mozilla/5.0 (Windows NT 5.1; rv:40.0) Gecko/20100101 Firefox/40.0"
+
+def _default_user_agent() -> str:
+    """Name the package and its version, e.g. `wayback/0.2.0`."""
+    try:
+        return f"wayback/{version('wayback')}"
+    except PackageNotFoundError:
+        return "wayback"
+
+
+DEFAULT_UA = _default_user_agent()
 LOG_PATH = "data/wayback-runs.jsonl"
 
+# Columns of a snapshot frame, in order; an empty result carries them too
+CDX_COLUMNS = [
+    "urlkey",
+    "timestamp",
+    "datetime_timestamp",
+    "original",
+    "mimetype",
+    "statuscode",
+    "digest",
+    "length",
+    "archive_url",
+]
+SNAPSHOT_COLUMNS = ["url", *CDX_COLUMNS, "retrieved_on", "retrieved_dates"]
 
-def _append_run_log(entry: dict[str, object]) -> None:
-    """Append a run record to the JSONL run log at LOG_PATH."""
-    log_dir = os.path.dirname(LOG_PATH)
+
+def _today() -> str:
+    """Today's date as a Wayback timestamp (`YYYYMMDD`), read at call time."""
+    return time.strftime("%Y%m%d", time.localtime())
+
+
+def _append_run_log(entry: dict[str, object], log_path: str | None = None) -> None:
+    """Append a run record to the JSONL run log at `log_path` (or LOG_PATH)."""
+    path = log_path or LOG_PATH
+    log_dir = os.path.dirname(path)
     if log_dir and not os.path.exists(log_dir):
         os.makedirs(log_dir)
-    with open(LOG_PATH, "a", encoding="utf-8") as f:
+    with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
-
-
-def _count_snapshots(df: pd.DataFrame) -> int:
-    """Count snapshot rows, excluding the placeholder row of an empty result."""
-    if "timestamp" not in df.columns:
-        return 0
-    return int(df["timestamp"].notna().sum())
 
 
 def get_url_snapshots(
     url: str,
-    start_timestamp: str = "20000101",
-    end_timestamp: str = time.strftime("%Y%m%d", time.localtime()),
+    start_timestamp: str | None = None,
+    end_timestamp: str | None = None,
     user_agent: str = DEFAULT_UA,
     verbose: bool = True,
-    save_log: bool = True,
+    save_log: bool = False,
+    log_path: str | None = None,
 ) -> pd.DataFrame:
     """
     Get Wayback Machine snapshots for a given URL.
 
     Args:
         url (str): URL to search.
-        start_timestamp (str): Start timestamp for Wayback Machine search.
-        end_timestamp (str): End timestamp for Wayback Machine search.
-        user_agent (str): User agent to use for the request.
+        start_timestamp (str | None): Start timestamp for the search. `None`
+            (the default) sets no lower bound.
+        end_timestamp (str | None): End timestamp for the search. `None` (the
+            default) means today, read when the function is called.
+        user_agent (str): User agent to use for the request. Defaults to
+            `wayback/<version>`.
         verbose (bool): Whether to print progress.
         save_log (bool): Whether to append a record of the run and its
-            outcome to `data/wayback-runs.jsonl`.
+            outcome to the JSONL run log.
+        log_path (str | None): Where to write the run log when `save_log` is
+            set. `None` writes to `LOG_PATH` (`data/wayback-runs.jsonl`,
+            relative to the working directory).
 
     Returns:
-        pd.DataFrame: DataFrame containing the snapshots.
+        pd.DataFrame: One row per snapshot, with the columns in
+            `SNAPSHOT_COLUMNS`. No snapshots gives zero rows with the same
+            columns.
     """
+    if end_timestamp is None:
+        end_timestamp = _today()
     started_at = datetime.now().astimezone()
     log_entry: dict[str, object] = {
         "function": "get_url_snapshots",
@@ -77,12 +111,11 @@ def get_url_snapshots(
 
         if verbose:
             print("reshaping items")
-        df = pd.DataFrame(items) if items else pd.DataFrame({}, index=[0])
-        df["archive_url"] = None if "archive_url" not in df else df["archive_url"]
+        df = pd.DataFrame(items, columns=CDX_COLUMNS)
         df["retrieved_on"] = pd.Timestamp.now()
-        df["retrieved_dates"] = str(start_timestamp) + "-" + str(end_timestamp)
+        df["retrieved_dates"] = f"{start_timestamp or ''}-{end_timestamp}"
         df["url"] = url
-        df = df[["url"] + list(df.drop(columns=["url"]).columns)]
+        df = df[SNAPSHOT_COLUMNS]
     except Exception as e:
         if save_log:
             duration = (datetime.now().astimezone() - started_at).total_seconds()
@@ -91,7 +124,7 @@ def get_url_snapshots(
                 outcome="error",
                 error=str(e),
             )
-            _append_run_log(log_entry)
+            _append_run_log(log_entry, log_path)
         raise
 
     if save_log:
@@ -99,9 +132,9 @@ def get_url_snapshots(
         log_entry.update(
             duration_seconds=round(duration, 3),
             outcome="success",
-            n_snapshots=_count_snapshots(df),
+            n_snapshots=len(df),
         )
-        _append_run_log(log_entry)
+        _append_run_log(log_entry, log_path)
 
     return df
 
@@ -113,7 +146,8 @@ def get_url_list_snapshots(
     output_directory: str | None = None,
     sleep_time: int = 5,
     verbose: bool = False,
-    save_log: bool = True,
+    save_log: bool = False,
+    log_path: str | None = None,
 ) -> None:
     """
     Process a list of URLs to collect Wayback snapshots and save to
@@ -127,7 +161,12 @@ def get_url_list_snapshots(
         sleep_time (int): Number of seconds to sleep between requests.
         verbose (bool): Whether to print progress.
         save_log (bool): Whether to append a record of the run — settings,
-            counts, and per-URL outcomes — to `data/wayback-runs.jsonl`.
+            counts, and per-URL outcomes — to the JSONL run log.
+        log_path (str | None): Where to write the run log when `save_log` is
+            set. `None` writes to `LOG_PATH` (`data/wayback-runs.jsonl`,
+            relative to the working directory).
+
+    A URL with no snapshots gets a header-only CSV.
     """
     assert output_directory is not None, "output_directory must be specified"
     if not os.path.exists(output_directory):
@@ -162,7 +201,7 @@ def get_url_list_snapshots(
                     "url": url,
                     "output_path": output_path,
                     "status": "saved",
-                    "n_snapshots": _count_snapshots(df),
+                    "n_snapshots": len(df),
                 }
             )
         except Exception as e:
@@ -194,5 +233,6 @@ def get_url_list_snapshots(
                 "n_skipped": statuses.count("skipped"),
                 "n_errors": statuses.count("error"),
                 "results": results,
-            }
+            },
+            log_path,
         )

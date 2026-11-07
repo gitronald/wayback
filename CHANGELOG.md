@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `log_path` argument on `get_url_snapshots` and `get_url_list_snapshots`, naming
+  where `save_log=True` writes the run log
+
+### Changed
+
+- The run log is off by default: `save_log` now defaults to `False`, so a call no
+  longer creates `data/wayback-runs.jsonl` in the working directory. Pass
+  `save_log=True` (and optionally `log_path`) to keep writing it
+- `start_timestamp` defaults to `None`, so a lookup has no lower bound and includes
+  1996-1999 captures, which the old `"20000101"` default dropped
+- `end_timestamp` defaults to `None`, meaning today at the time of the call, not the
+  date the module was imported
+- An empty result is a DataFrame with zero rows and the usual columns, not a single
+  row of NaNs, and `get_url_list_snapshots` writes a header-only CSV for it
+- The default User-Agent is `wayback/<version>`, replacing a Firefox 40 browser
+  string
+
 ## [0.1.2] - 2026-11-06
 
 ### Changed

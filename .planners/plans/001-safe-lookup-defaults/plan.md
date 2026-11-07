@@ -1,11 +1,11 @@
 ---
 id: 1
 slug: safe-lookup-defaults
-status: active
+status: done
 branch: feature/001-safe-lookup-defaults
 created: 2026-11-06T20:34:24-08:00
-concluded:
-pr:
+concluded: 2026-11-06T20:49:01-08:00
+pr: https://github.com/gitronald/wayback/pull/14
 ---
 
 # Make lookup defaults safe and empty results empty
@@ -100,3 +100,23 @@ and the changelog. One PR.
   - Base: `dev` at `2ceb7c3`
   - Worktree: `.worktrees/001-safe-lookup-defaults`
   - PR: pending
+- **2026-11-06T20:40:52-08:00** — PR opened: https://github.com/gitronald/wayback/pull/14
+- **2026-11-06T20:41:23-08:00** — Implemented decisions 1-5 in two commits on the branch.
+  - `save_log` defaults to `False` on both functions; new `log_path` argument, falling back to `LOG_PATH`.
+  - `DEFAULT_UA` is `wayback/<version>` from package metadata, `wayback` without it.
+  - `start_timestamp`/`end_timestamp` default to `None`; the end resolves to today inside the call (via `_today()`), the start passes through as no lower bound. `retrieved_dates` writes an empty start as `-<end>`.
+  - Empty results are zero-row frames with `SNAPSHOT_COLUMNS` (now exported); `_count_snapshots` is gone, replaced by `len(df)`. An empty URL's CSV is header-only.
+  - Tests fake `WaybackMachineCDXServerAPI`; 14 pass, coverage 93%. ruff and pyrefly clean at the docs commit.
+  - README gains a Defaults section; the changelog's `[Unreleased]` names each change under Added/Changed.
+  - Not done here: the 0.2.0 release (decision 6). The release is left for close-out, since plan 002 stacks on this branch and may share the release.
+- **2026-11-06T20:41:25-08:00** — Implemented: 4 commits ahead of `dev`.
+- **2026-11-06T20:49:17-08:00** — Review gate run on PR 14 (code-review, medium); review posted as a PR comment.
+  - Review follow-up: correctness finder raised nothing. Two test-only findings fixed in 3b3bef7: the error-log test now uses the fake CDX fixture's refuse set instead of its own stub, and the start-timestamp test no longer repeats the empty-frame column check. Rejected as pre-existing: the localtime() argument in _today(). No new regression tests, since both fixes are to tests; 14 pass, ruff, format, and pyrefly clean.
+  - Decision 6 (release) moves to the release pipeline run after plan 002 closes, so 001 and 002 ship in one minor release.
+
+## Retrospective
+
+- All five findings were fixed as the decisions specified; none needed a second pass. Decision 6 (the release) is the one piece that moved, so it can ship with plan 002 in one minor version.
+- Building the empty frame from `pd.DataFrame(items, columns=CDX_COLUMNS)` removed both the NaN placeholder row and `_count_snapshots`. Fixing the frame's shape at the source made the downstream cleanup helper unnecessary.
+- A fake CDX client with `calls`, `rows`, and `refuse` covered every test without network access. Review found the one test that bypassed it, which is a reason to route every new test through the fixture.
+- Stacking 002 on this branch with a `--no-ff` merge kept both plans moving. The cost is that 002 has to take in this branch's review fixes before it closes.

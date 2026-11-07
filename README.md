@@ -64,8 +64,26 @@ restarted without re-collecting anything. Requests are spaced `sleep_time` secon
 apart (default 5) to be polite to the API, and an error on one URL is printed and
 skipped rather than stopping the batch.
 
-Both functions also append a JSON record of each run — its parameters, timing, and
-outcome — to `data/wayback-runs.jsonl`; pass `save_log=False` to disable this.
+A URL with no snapshots gets a header-only CSV.
+
+
+### Defaults
+
+- **Date range**: `get_url_snapshots` searches from the first capture to today.
+  `start_timestamp=None` (the default) sets no lower bound, and
+  `end_timestamp=None` means the date of the call. Pass `YYYYMMDD` strings to narrow
+  it.
+- **No snapshots**: an empty result is a DataFrame with zero rows and the usual
+  columns (`wayback.SNAPSHOT_COLUMNS`), so `len(data)` is the snapshot count.
+- **User-Agent**: requests identify themselves as `wayback/<version>`. Pass
+  `user_agent=` to send another.
+- **Run log**: off by default. `save_log=True` appends a JSON record of each run (its
+  parameters, timing, and outcome) to `log_path`, or to `data/wayback-runs.jsonl`
+  relative to the working directory when no path is given:
+
+```python
+wayback.get_url_snapshots("lazerlab.net", save_log=True, log_path="logs/wayback.jsonl")
+```
 
 
 ## Dependencies
