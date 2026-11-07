@@ -37,6 +37,8 @@ class FakeCDX:
     calls: list[dict[str, object]] = []
     rows: list[CDXSnapshot] = []
     refuse: set[str] = set()
+    # Raised one per lookup, in order, before any lookup succeeds
+    errors: list[Exception] = []
 
     def __init__(self, **kwargs: object) -> None:
         FakeCDX.calls.append(kwargs)
@@ -45,6 +47,8 @@ class FakeCDX:
     def snapshots(self) -> Iterator[CDXSnapshot]:
         if self.url in FakeCDX.refuse:
             raise ConnectionError("refused")
+        if FakeCDX.errors:
+            raise FakeCDX.errors.pop(0)
         yield from FakeCDX.rows
 
 
@@ -76,6 +80,7 @@ def fake_cdx(monkeypatch: pytest.MonkeyPatch) -> type[FakeCDX]:
     FakeCDX.calls = []
     FakeCDX.rows = []
     FakeCDX.refuse = set()
+    FakeCDX.errors = []
     monkeypatch.setattr(wb, "WaybackMachineCDXServerAPI", FakeCDX)
     return FakeCDX
 
@@ -383,29 +388,12 @@ def test_pacer_spans_functions(clock, fake_cdx) -> None:
 # Retries
 
 
-class Flaky:
-    """Fake CDX client whose lookups raise the queued errors, then succeed."""
-
-    errors: list[Exception] = []
-    attempts = 0
-
-    def __init__(self, **kwargs: object) -> None:
-        pass
-
-    def snapshots(self) -> Iterator[CDXSnapshot]:
-        Flaky.attempts += 1
-        if Flaky.errors:
-            raise Flaky.errors.pop(0)
-        yield _snapshot("20200101000000")
-
-
 @pytest.fixture
-def flaky(monkeypatch: pytest.MonkeyPatch) -> type[Flaky]:
-    Flaky.errors = []
-    Flaky.attempts = 0
-    monkeypatch.setattr(wb, "WaybackMachineCDXServerAPI", Flaky)
+def flaky(monkeypatch: pytest.MonkeyPatch, fake_cdx: type[FakeCDX]) -> type[FakeCDX]:
+    """The fake CDX client with one snapshot to return and no backoff jitter."""
+    fake_cdx.rows = [_snapshot("20200101000000")]
     monkeypatch.setattr(wb.random, "uniform", lambda a, b: 0.0)
-    return Flaky
+    return fake_cdx
 
 
 def _http_error(status: int, retry_after: str | None = None) -> requests.HTTPError:
@@ -420,7 +408,7 @@ def test_refused_then_success_retries_once(clock, flaky, caplog) -> None:
     flaky.errors = [requests.ConnectionError("[Errno 111] Connection refused")]
     records = wayback.get_url_records("example.com", min_interval=0)
     assert len(records) == 1
-    assert flaky.attempts == 2
+    assert len(flaky.calls) == 2
     assert clock.sleeps == [wb.BACKOFF_SECONDS]
     assert "retry 1/3 for example.com" in caplog.text
 
@@ -429,7 +417,7 @@ def test_retries_give_up_after_max_retries(clock, flaky) -> None:
     flaky.errors = [requests.ConnectionError("refused") for _ in range(3)]
     with pytest.raises(requests.ConnectionError):
         wayback.get_url_records("example.com", min_interval=0, max_retries=2)
-    assert flaky.attempts == 3
+    assert len(flaky.calls) == 3
     assert clock.sleeps == [wb.BACKOFF_SECONDS, wb.BACKOFF_SECONDS * 2]
 
 
@@ -448,11 +436,14 @@ def test_retry_after_http_date(clock, flaky) -> None:
 def test_exhausted_waybackpy_retries_are_retried(clock, flaky) -> None:
     flaky.errors = [requests.exceptions.RetryError("too many 503 error responses")]
     assert len(wayback.get_url_records("example.com", min_interval=0)) == 1
-    assert flaky.attempts == 2
+    assert len(flaky.calls) == 2
 
 
-def test_unparseable_retry_after_falls_back_to_backoff(clock, flaky) -> None:
-    flaky.errors = [_http_error(429, retry_after="soon")]
+@pytest.mark.parametrize("retry_after", ["soon", "nan", "inf", "1e999"])
+def test_unparseable_retry_after_falls_back_to_backoff(
+    clock, flaky, retry_after
+) -> None:
+    flaky.errors = [_http_error(429, retry_after=retry_after)]
     wayback.get_url_records("example.com", min_interval=0)
     assert clock.sleeps == [wb.BACKOFF_SECONDS]
 
@@ -462,5 +453,5 @@ def test_other_errors_are_not_retried(clock, flaky, error) -> None:
     flaky.errors = [error]
     with pytest.raises(type(error)):
         wayback.get_url_records("example.com", min_interval=0)
-    assert flaky.attempts == 1
+    assert len(flaky.calls) == 1
     assert clock.sleeps == []

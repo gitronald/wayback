@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import os
 import random
 import threading
@@ -148,9 +149,12 @@ def _retry_after(error: Exception) -> float | None:
     if value is None:
         return None
     try:
-        return max(float(value), 0.0)
+        seconds = float(value)
     except ValueError:
         pass
+    else:
+        # `nan` and `inf` parse as floats but name no wait
+        return max(seconds, 0.0) if math.isfinite(seconds) else None
     try:
         when = parsedate_to_datetime(value)
     except (TypeError, ValueError):
