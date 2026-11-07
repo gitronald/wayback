@@ -6,6 +6,7 @@ import json
 import subprocess
 import sys
 import textwrap
+import threading
 import warnings
 from collections.abc import Iterator
 from pathlib import Path
@@ -655,3 +656,103 @@ def test_final_failure_events(clock, flaky) -> None:
     assert lookup["outcome"] == "error" and lookup["attempts"] == 3
     assert lookup["error"] == "refused"
     assert lookup["total_waited_s"] == wb.BACKOFF_SECONDS * 3
+
+
+# Review follow-up
+
+
+def test_empty_log_path_counts_as_none(tmp_path, monkeypatch, fake_cdx) -> None:
+    monkeypatch.chdir(tmp_path)
+    wayback.get_url_records("example.com", log_path="")
+    assert list(tmp_path.iterdir()) == []
+    with pytest.warns(DeprecationWarning):
+        wayback.get_url_snapshots(
+            "example.com", verbose=False, save_log=True, log_path=""
+        )
+    assert _kinds(_events(tmp_path / wb.LOG_PATH)) == ["request", "lookup"]
+
+
+def test_raising_handler_is_not_called_again(clock, flaky) -> None:
+    flaky.errors = [ValueError("bad filter")]
+    calls: list[object] = []
+
+    def handler(event: dict[str, object]) -> None:
+        calls.append(event["event"])
+        raise OSError("disk full")
+
+    with pytest.raises(OSError, match="disk full") as info:
+        wayback.get_url_records("example.com", min_interval=0, on_event=handler)
+    assert calls == ["request"]
+    # The lookup's own error is kept as the context of the handler's
+    assert isinstance(info.value.__context__, ValueError)
+
+
+def test_raising_handler_on_success_is_not_called_again(flaky) -> None:
+    calls: list[object] = []
+
+    def handler(event: dict[str, object]) -> None:
+        calls.append(event["event"])
+        raise OSError("disk full")
+
+    with pytest.raises(OSError):
+        wayback.get_url_records("example.com", min_interval=0, on_event=handler)
+    assert calls == ["request"]
+
+
+def test_handler_edits_do_not_reach_the_lookup(clock, flaky) -> None:
+    flaky.errors = [requests.ConnectionError("refused")]
+    collapses = ["digest"]
+
+    def handler(event: dict[str, Any]) -> None:
+        if event["event"] == "request":
+            event["filters"].append("statuscode:404")
+            event["collapses"].clear()
+
+    wayback.get_url_records(
+        "example.com",
+        status=200,
+        collapses=collapses,
+        min_interval=0,
+        on_event=handler,
+    )
+    assert [c["filters"] for c in flaky.calls] == [["statuscode:200"]] * 2
+    assert [c["collapses"] for c in flaky.calls] == [["digest"]] * 2
+    assert collapses == ["digest"]
+
+
+def test_writers_share_one_lock(tmp_path) -> None:
+    path = tmp_path / "events.jsonl"
+    big = "x" * 100_000  # far past a write buffer, so a line takes several writes
+
+    def write(n: int) -> None:
+        log = wayback.JsonlEventLog(path)  # a writer per thread, as each lookup has
+        for i in range(10):
+            log({"event": "request", "thread": n, "i": i, "pad": big})
+
+    threads = [threading.Thread(target=write, args=(n,)) for n in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    events = _events(path)
+    assert len(events) == 80
+    assert {(e["thread"], e["i"]) for e in events} == {
+        (n, i) for n in range(8) for i in range(10)
+    }
+
+
+def test_batch_event_params(tmp_path, fake_cdx) -> None:
+    events: list[dict[str, Any]] = []
+    wayback.get_url_list_snapshots(
+        ["a.example"],
+        "20200101",
+        "20201231",
+        output_directory=str(tmp_path / "out"),
+        sleep_time=0,
+        status=200,
+        collapses=["digest"],
+        on_event=events.append,
+    )
+    lookup, batch = events[-2], events[-1]
+    keys = ("start_timestamp", "end_timestamp", "filters", "collapses")
+    assert {k: batch[k] for k in keys} == {k: lookup[k] for k in keys}

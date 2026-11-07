@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import logging
@@ -113,12 +114,17 @@ class _Pacer:
 
 _pacer = _Pacer()
 
+# Serializes every JsonlEventLog write in the process, so lookups that each
+# build their own writer for one path cannot interleave their lines
+_write_lock = threading.Lock()
+
 
 class JsonlEventLog:
     """
     An event handler that appends each event to a JSON Lines file, one object
-    per line, creating the file's directory when it is missing. Safe to share
-    between threads.
+    per line, creating the file's directory when it is missing. Writes from
+    every instance in a process take one lock, so threads can log to the same
+    file through one writer or several.
 
     Args:
         path (str | os.PathLike[str]): File to append to.
@@ -129,13 +135,12 @@ class JsonlEventLog:
     def __init__(self, path: str | os.PathLike[str], run_id: str | None = None):
         self.path = os.fspath(path)
         self.run_id = run_id
-        self._lock = threading.Lock()
 
     def __call__(self, event: Event) -> None:
         if self.run_id is not None and "run_id" not in event:
             event = {**event, "run_id": self.run_id}
         line = json.dumps(event, default=str) + "\n"
-        with self._lock:
+        with _write_lock:
             log_dir = os.path.dirname(self.path)
             if log_dir:
                 os.makedirs(log_dir, exist_ok=True)
@@ -144,11 +149,17 @@ class JsonlEventLog:
 
 
 class _Emitter:
-    """Build events and hand each to every handler; does nothing with none."""
+    """
+    Build events and hand each to every handler; does nothing with none. Each
+    handler gets its own deep copy, so a handler that edits an event changes
+    nothing the lookup goes on to use. An exception a handler raises is kept
+    as `handler_error` and raised on, so the lookup can tell it from its own.
+    """
 
     def __init__(self, handlers: list[EventHandler], run_id: str | None) -> None:
         self.handlers = handlers
         self.run_id = run_id
+        self.handler_error: Exception | None = None
 
     def __call__(self, kind: str, **fields: object) -> None:
         if not self.handlers:
@@ -158,7 +169,11 @@ class _Emitter:
             event["run_id"] = self.run_id
         event.update(fields)
         for handler in self.handlers:
-            handler(dict(event))
+            try:
+                handler(copy.deepcopy(event))
+            except Exception as e:
+                self.handler_error = e
+                raise
 
 
 def _emitter(
@@ -170,8 +185,11 @@ def _emitter(
     """
     The emitter a public lookup function uses: `on_event` and a
     `JsonlEventLog` at `log_path`, each when given. The deprecated
-    `save_log=True` with no `log_path` logs to `LOG_PATH`.
+    `save_log=True` with no `log_path` logs to `LOG_PATH`. An empty
+    `log_path` counts as none.
     """
+    if not log_path:
+        log_path = None
     if save_log:
         warnings.warn(
             "save_log is deprecated and will be removed in a later release; "
@@ -335,7 +353,10 @@ def _lookup_event(
     try:
         yield stats
     except Exception as e:
-        finish(outcome="error", **_error_fields(e))
+        # A handler's own exception is not the lookup's; calling the handler
+        # again to report it would raise again and hide the first
+        if e is not emit.handler_error:
+            finish(outcome="error", **_error_fields(e))
         raise
     finish(outcome="success", n_snapshots=stats.n_snapshots)
 
@@ -692,10 +713,9 @@ def get_url_list_snapshots(
         "batch",
         function="get_url_list_snapshots",
         n_urls=len(urls),
-        start_timestamp=start_timestamp,
-        end_timestamp=end_timestamp,
-        filters=_resolve_filters(filters, status),
-        collapses=collapses or [],
+        **_params(
+            start_timestamp, end_timestamp, _resolve_filters(filters, status), collapses
+        ),
         output_directory=output_directory,
         sleep_time=sleep_time,
         min_interval=min_interval,
