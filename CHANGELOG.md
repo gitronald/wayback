@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Maintenance: synced the project tooling with repotemplates 0.15.0 (release stamp and
+  the Dependabot guide link). No change to the library's behavior or API
+
 ## [0.3.0] - 2026-11-06
 
 ### Added
