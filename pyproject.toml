@@ -1,6 +1,6 @@
 [project]
 name = "wayback"
-version = "0.3.0"
+version = "0.3.1"
 description = "A wrapper for collecting data from the Wayback Machine"
 authors = [
     {name = "Ronald E. Robertson", email = "rer@acm.org"}
@@ -17,9 +17,9 @@ readme = "README.md"
 [project.urls]
 repository = "https://github.com/gitronald/wayback"
 
-# proj-template release stamp, set by proj-init.sh and install-template; inert to consumers.
-[tool.proj-template]
-version = "0.11.7"
+# repotemplates release stamp, set by init.sh and install-template; inert to consumers.
+[tool.repotemplates]
+version = "0.15.0"
 
 [build-system]
 requires = ["hatchling"]
