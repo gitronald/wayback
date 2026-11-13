@@ -38,11 +38,11 @@ only-include = [
 [dependency-groups]
 dev = [
     "pre-commit",
-    "pyrefly>=1.3.2",
-    "pytest>=9.1.1",
+    "pyrefly>=1.4.1",
+    "pytest>=9.2.0",
     "pytest-cov",
     # Same minor as the ruff-pre-commit rev in .pre-commit-config.yaml; bump the two together.
-    "ruff>=0.17,<0.18",
+    "ruff>=0.17.4,<0.18",
 ]
 
 [tool.ruff]
